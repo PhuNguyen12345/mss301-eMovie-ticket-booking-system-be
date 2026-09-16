@@ -6,11 +6,11 @@
 		<groupId>fu.mss301</groupId>
 		<artifactId>e-movie-ticket-booking-system</artifactId>
 		<version>1.0.0</version>
-		<relativePath>../../pom.xml</relativePath>
+		<relativePath>../pom.xml</relativePath>
 	</parent>
 
-	<artifactId>eureka-server</artifactId>
-	<name>eureka-server</name>
+	<artifactId>discovery-server</artifactId>
+	<name>discovery-server</name>
 	<description>eureka-server</description>
 
 	<properties>

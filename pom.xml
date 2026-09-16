@@ -18,9 +18,8 @@
 	</properties>
 
 	<modules>
-		<module>infra/config-server</module>
-		<module>infra/eureka-server</module>
-		<module>infra/api-gateway</module>
+		<module>discovery-server</module>
+		<module>api-gateway</module>
 		<module>services/booking-service</module>
 		<module>services/cinema-service</module>
 		<module>services/movie-service</module>
