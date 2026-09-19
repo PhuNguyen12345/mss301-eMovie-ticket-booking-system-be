@@ -15,6 +15,8 @@
 		<spring-cloud.version>2025.0.0</spring-cloud.version>
 		<spring-boot.version>4.1.1</spring-boot.version>
 		<lombok.version>1.18.46</lombok.version>
+		<maven.compiler.source>21</maven.compiler.source>
+		<maven.compiler.target>21</maven.compiler.target>
 	</properties>
 
 	<modules>
@@ -25,6 +27,7 @@
 		<module>services/movie-service</module>
 		<module>services/user-service</module>
 		<module>services/showtime-service</module>
+		<module>common</module>
 	</modules>
 
 	<dependencyManagement>
