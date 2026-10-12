@@ -55,7 +55,7 @@ public class MovieServiceImpl implements MovieService {
             keyword == null || keyword.isBlank() 
             ? null 
             : keyword.trim(); 
-            
+
         //define pageable with page, size and sort direction 
         Pageable pageable = PageRequest.of(
             page, 
@@ -121,6 +121,7 @@ public class MovieServiceImpl implements MovieService {
     }
 
     @Override
+    @Transactional
     public void expireMovie(Integer id) {
         updateMovieStatus(id, MovieStatus.EXPIRED); 
     }
