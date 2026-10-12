@@ -16,7 +16,7 @@ public interface MovieRepository extends JpaRepository<Movie, Integer> {
                 SELECT m 
                 from Movie m 
                 WHERE (:keyword IS NULL 
-                    OR m.title LIKE 
+                    OR LOWER(m.title) LIKE 
                         LOWER(CONCAT('%', :keyword, '%')))
                 AND (:status IS NULL
                     OR m.status = :status)
@@ -30,7 +30,7 @@ public interface MovieRepository extends JpaRepository<Movie, Integer> {
                 SELECT COUNT(m)
                 from Movie m
                 WHERE (:keyword IS NULL
-                    OR m.title LIKE 
+                    OR LOWER(m.title) LIKE 
                         LOWER(CONCAT('%', :keyword, '%')))
                 AND (:status IS NULL
                     OR m.status = :status)

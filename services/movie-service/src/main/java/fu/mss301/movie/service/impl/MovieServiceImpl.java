@@ -37,13 +37,25 @@ public class MovieServiceImpl implements MovieService {
         int page,
         int size
     ) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page must be greater than 0."); 
+        }
+
+        if (size < 1 || size > 100) {
+            throw new IllegalArgumentException(
+                "Size must be between 1 and 100."); 
+        }
+
+        if (genreId != null && genreId <= 0) {
+            throw new IllegalArgumentException(
+                "Genre id must be positive."); 
+        }
         //format keyword before searching 
         String normalizedKeyword = 
             keyword == null || keyword.isBlank() 
             ? null 
             : keyword.trim(); 
-
-
+            
         //define pageable with page, size and sort direction 
         Pageable pageable = PageRequest.of(
             page, 
@@ -109,7 +121,7 @@ public class MovieServiceImpl implements MovieService {
     }
 
     @Override
-    public void deleteMovie(Integer id) {
+    public void expireMovie(Integer id) {
         updateMovieStatus(id, MovieStatus.EXPIRED); 
     }
 

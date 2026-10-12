@@ -1,6 +1,4 @@
 package fu.mss301.movie.service;
-
-import org.springframework.stereotype.Service;
 import fu.mss301.common.dto.*;
 import fu.mss301.movie.dto.MovieResponseDTO;
 import fu.mss301.movie.dto.MovieRequestDTO;
@@ -17,7 +15,7 @@ public interface MovieService {
     MovieResponseDTO getMovieById(Integer id);
     MovieResponseDTO createMovie(MovieRequestDTO request);
     MovieResponseDTO updateMovie(Integer id, MovieRequestDTO request); 
-    void deleteMovie(Integer id);
+    void expireMovie(Integer id);
     MovieResponseDTO updateMovieStatus(
         Integer id,
         MovieStatus status

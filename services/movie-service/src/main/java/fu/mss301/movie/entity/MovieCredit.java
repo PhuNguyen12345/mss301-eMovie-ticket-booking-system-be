@@ -25,7 +25,7 @@ public class MovieCredit {
     @Id 
     @GeneratedValue (strategy = GenerationType.IDENTITY) 
     @Column (
-        name = "credit_id", 
+        name = "movie_credit_id", 
         columnDefinition = "INT UNSIGNED")
     private Integer id;
 
