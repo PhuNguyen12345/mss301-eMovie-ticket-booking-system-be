@@ -63,6 +63,13 @@
             <version>1.18.46</version>
             <scope>provided</scope>
         </dependency>
+
+        <dependency>
+            <groupId>fu.mss301</groupId>
+            <artifactId>common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        
     </dependencies>
 
     <build>

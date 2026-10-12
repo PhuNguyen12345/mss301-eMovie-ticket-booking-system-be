@@ -1,16 +1,17 @@
-package fu.mss301.movie.dto;
+package fu.mss301.common.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import java.util.List;
 
 @Getter 
 @Setter 
 @AllArgsConstructor 
 @NoArgsConstructor
 public class PageResponseDTO<T> {
-    private T data;
+    private List<T> data;
     private int page;
     private int size;
     private long totalElements;
