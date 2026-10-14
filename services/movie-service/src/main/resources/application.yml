@@ -8,6 +8,12 @@ spring:
   # Load file .env ở root của movie-service
   config:
     import: optional:file:./.env[.properties]
+  
+  servlet: 
+    multipart:
+      max-file-size: 5MB 
+      max-request-size: 6MB 
+        
 
   datasource:
     url: ${DB_URL}
@@ -47,3 +53,8 @@ logging:
   level:
     org.flywaydb: INFO
     org.hibernate.SQL: DEBUG
+
+cloudinary: 
+  cloud-name: ${CLOUDINARY_CLOUD_NAME} 
+  api-key: ${CLOUDINARY_API_KEY} 
+  api-secret: ${CLOUDINARY_API_SECRET}

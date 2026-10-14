@@ -2,25 +2,40 @@ package fu.mss301.movie.controller;
 
 import fu.mss301.common.dto.ApiResponse;
 import fu.mss301.common.dto.PageResponseDTO;
+import fu.mss301.movie.dto.MoviePosterResponseDTO;
 import fu.mss301.movie.dto.MovieRequestDTO;
 import fu.mss301.movie.dto.MovieResponseDTO;
 import fu.mss301.movie.dto.MovieStatusRequestDTO;
 import fu.mss301.movie.enums.MovieStatus;
+import fu.mss301.movie.service.MoviePosterService;
 import fu.mss301.movie.service.MovieService;
+
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
 import java.net.URI;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.PathVariable;
+
 
 @RestController
 @RequestMapping("/api/movies")
 public class MovieController {
 
     private final MovieService movieService;
+    private final MoviePosterService moviePosterService; 
 
-    public MovieController(MovieService movieService) {
+    public MovieController(
+        MovieService movieService, 
+        MoviePosterService moviePosterService
+    ) {
         this.movieService = movieService;
+        this.moviePosterService = moviePosterService; 
     }
 
     @GetMapping
@@ -77,5 +92,20 @@ public class MovieController {
     public ApiResponse<Void> expireMovie(@PathVariable("id") Integer id) {
         movieService.expireMovie(id);
         return ApiResponse.success(null, "Movie status changed to EXPIRED");
+    }
+
+    //api cho phep upload poster 
+    @PutMapping(
+        value = "/{id}/poster", 
+        consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<MoviePosterResponseDTO> uploadPoster(
+        @PathVariable("id") Integer id, 
+        @RequestParam("file") MultipartFile file
+    ) throws IOException {        
+        return ApiResponse.success(
+            moviePosterService.uploadPoster(id, file), 
+            "Poster updated successfully"
+        );
     }
 }

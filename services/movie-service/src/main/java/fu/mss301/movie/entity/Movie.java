@@ -51,6 +51,9 @@ public class Movie {
     @Column (name = "trailer_url", length = 500)
     private String trailerUrl;
 
+    @Column(name = "poster_public_id", length = 255)
+    private String posterPublicId;
+
     @Enumerated(EnumType.STRING)
     @Column (name = "status", nullable = false, length = 20)
     private MovieStatus status;
