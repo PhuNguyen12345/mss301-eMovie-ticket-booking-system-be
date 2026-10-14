@@ -6,6 +6,7 @@ import fu.mss301.movie.dto.MovieResponseDTO;
 import fu.mss301.movie.enums.MovieStatus;
 import fu.mss301.movie.exception.MovieExceptionHandler;
 import fu.mss301.movie.exception.MovieNotFoundException;
+import fu.mss301.movie.service.MoviePosterService;
 import fu.mss301.movie.service.MovieService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,12 +24,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class MovieControllerTests {
 
     private MovieService service;
+    private MoviePosterService posterService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         service = mock(MovieService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new MovieController(service))
+        posterService = mock(MoviePosterService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new MovieController(service, posterService))
             .setControllerAdvice(new MovieExceptionHandler()).build();
     }
 
