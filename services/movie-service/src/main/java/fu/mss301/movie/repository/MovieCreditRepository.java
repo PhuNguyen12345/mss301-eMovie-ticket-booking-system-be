@@ -6,5 +6,5 @@ import fu.mss301.movie.entity.MovieCredit;
 
 @Repository 
 public interface MovieCreditRepository extends JpaRepository<MovieCredit, Integer>  {
-    
+    boolean existsByPerson_Id(Integer personId);
 }
