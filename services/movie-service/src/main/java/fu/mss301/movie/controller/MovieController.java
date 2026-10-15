@@ -5,6 +5,7 @@ import fu.mss301.common.dto.PageResponseDTO;
 import fu.mss301.movie.dto.MoviePosterResponseDTO;
 import fu.mss301.movie.dto.MovieRequestDTO;
 import fu.mss301.movie.dto.MovieResponseDTO;
+import fu.mss301.movie.dto.MovieDetailResponseDTO;
 import fu.mss301.movie.dto.MovieStatusRequestDTO;
 import fu.mss301.movie.enums.MovieStatus;
 import fu.mss301.movie.service.MoviePosterService;
@@ -53,7 +54,7 @@ public class MovieController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<MovieResponseDTO> getMovieById(@PathVariable("id") Integer id) {
+    public ApiResponse<MovieDetailResponseDTO> getMovieById(@PathVariable("id") Integer id) {
         return ApiResponse.success(movieService.getMovieById(id), "Movie retrieved successfully");
     }
 

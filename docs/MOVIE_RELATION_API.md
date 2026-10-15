@@ -59,7 +59,8 @@ Credit-pair uniqueness is enforced by these APIs under the movie lock, not by a
 new SQL constraint. Existing duplicate credit pairs return 409 on replacement;
 inspect and resolve them before retrying. Direct DB writes bypass API validation.
 
-These endpoints do not change the existing Movie list/detail response shape.
+GET movie detail also includes genres and credits; see [MOVIE_API.md](MOVIE_API.md).
+The movie list continues to use the compact response without these collections.
 
 ## Verification
 
