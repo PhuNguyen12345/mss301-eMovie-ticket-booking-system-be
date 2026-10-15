@@ -28,10 +28,9 @@ POST and PUT accept JSON:
 - Deleting a genre already linked to a movie returns 409.
 - The DB unique constraint remains the final guard against concurrent duplicate creation.
 
-The usage check before deletion does not alone prevent concurrent link creation.
-When implementing movie-genre assignment, coordinate locking between assignment
-and deletion if this rule must hold under concurrent requests. The current schema
-retains ON DELETE CASCADE; it is not changed by this feature.
+Deletion locks the genre before checking usage. Movie-genre assignment locks the
+requested genres in ascending ID order using the same repository method. Future
+link writers must follow this protocol. The schema retains ON DELETE CASCADE.
 
 ## Test
 

@@ -110,7 +110,7 @@ class GenreControllerTests {
 
     @Test
     void cannotDeleteGenreUsedByMovie() throws Exception {
-        when(genres.findById(1)).thenReturn(Optional.of(genre()));
+        when(genres.findByIdForUpdate(1)).thenReturn(Optional.of(genre()));
         when(links.existsByGenre_Id(1)).thenReturn(true);
         mvc.perform(delete("/api/genres/1"))
             .andExpect(status().isConflict())
@@ -121,7 +121,7 @@ class GenreControllerTests {
     @Test
     void deleteUnusedGenreReturns200() throws Exception {
         Genre genre = genre();
-        when(genres.findById(1)).thenReturn(Optional.of(genre));
+        when(genres.findByIdForUpdate(1)).thenReturn(Optional.of(genre));
         mvc.perform(delete("/api/genres/1"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value(200));

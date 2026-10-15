@@ -96,7 +96,7 @@ class PersonControllerTests {
 
     @Test
     void existingCreditsBlockDeletion() throws Exception {
-        when(persons.findById(1)).thenReturn(Optional.of(person()));
+        when(persons.findByIdForUpdate(1)).thenReturn(Optional.of(person()));
         when(credits.existsByPerson_Id(1)).thenReturn(true);
         mvc.perform(delete("/api/persons/1"))
             .andExpect(status().isConflict())
@@ -108,7 +108,7 @@ class PersonControllerTests {
     @Test
     void unusedPersonCanBeDeleted() throws Exception {
         Person person = person();
-        when(persons.findById(1)).thenReturn(Optional.of(person));
+        when(persons.findByIdForUpdate(1)).thenReturn(Optional.of(person));
         mvc.perform(delete("/api/persons/1"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value(200));

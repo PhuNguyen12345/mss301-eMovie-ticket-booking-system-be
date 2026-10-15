@@ -65,7 +65,11 @@ public class PersonServiceImpl implements PersonService {
     @Override
     @Transactional
     public void deletePerson(Integer id) {
-        Person person = findPersonOrThrow(id);
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("Person ID must be positive");
+        }
+        Person person = personRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new PersonNotFoundException(id));
         if (movieCreditRepository.existsByPerson_Id(id)) {
             throw new PersonConflictException("Cannot delete a person who has movie credits");
         }

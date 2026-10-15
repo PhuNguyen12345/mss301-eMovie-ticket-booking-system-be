@@ -73,7 +73,11 @@ public class GenreServiceImpl implements GenreService {
     @Override
     @Transactional
     public void deleteGenre(Integer id) {
-        Genre genre = findGenreOrThrow(id);
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException("Genre ID must be positive");
+        }
+        Genre genre = genreRepository.findByIdForUpdate(id)
+            .orElseThrow(() -> new GenreNotFoundException(id));
         if (movieGenreRepository.existsByGenre_Id(id)) {
             throw new GenreConflictException("Cannot delete a genre that is used by movies");
         }

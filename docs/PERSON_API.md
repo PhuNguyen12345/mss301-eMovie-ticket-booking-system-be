@@ -33,10 +33,9 @@ curl -X POST 'http://localhost:8082/api/persons' \
   -d '{"fullName":"Christopher Nolan"}'
 ```
 
-The credit usage check alone does not prevent concurrent credit creation during
-deletion. When implementing credit assignment, coordinate locking between
-assignment and deletion if this rule must hold under concurrent requests.
-The existing ON DELETE CASCADE schema is unchanged.
+Deletion locks the person before checking credit usage. Movie-credit assignment
+locks requested persons in ascending ID order using the same repository method.
+Future credit writers must follow this protocol. ON DELETE CASCADE is unchanged.
 
 ## Verification
 
