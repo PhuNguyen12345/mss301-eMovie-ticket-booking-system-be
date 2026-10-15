@@ -7,5 +7,5 @@ import fu.mss301.movie.entity.MovieGenreId;
 
 @Repository 
 public interface MovieGenreRepository extends JpaRepository<MovieGenre, MovieGenreId> {
-    
+    boolean existsByGenre_Id(Integer genreId);
 }
