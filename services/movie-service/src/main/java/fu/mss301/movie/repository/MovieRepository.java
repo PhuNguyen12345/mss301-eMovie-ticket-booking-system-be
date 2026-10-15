@@ -57,4 +57,8 @@ public interface MovieRepository extends JpaRepository<Movie, Integer> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT m FROM Movie m WHERE m.id = :id")
     Optional<Movie> findByIdForPosterUpdate(@Param("id") Integer id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM Movie m WHERE m.id = :id")
+    Optional<Movie> findByIdForRelationUpdate(@Param("id") Integer id);
 }

@@ -3,6 +3,8 @@ package fu.mss301.movie.service;
 import fu.mss301.movie.entity.Movie;
 import fu.mss301.movie.enums.MovieStatus;
 import fu.mss301.movie.repository.MovieRepository;
+import fu.mss301.movie.repository.MovieGenreRepository;
+import fu.mss301.movie.repository.MovieCreditRepository;
 import fu.mss301.movie.service.impl.MovieServiceImpl;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -39,7 +41,8 @@ class MovieServiceTransactionTests {
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(new TestTransactionManager());
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
-        ProxyFactory factory = new ProxyFactory(new MovieServiceImpl(repository, entityManager));
+        ProxyFactory factory = new ProxyFactory(new MovieServiceImpl(repository, entityManager,
+            mock(MovieGenreRepository.class), mock(MovieCreditRepository.class)));
         factory.addAdvice(interceptor);
         MovieService service = (MovieService) factory.getProxy();
 

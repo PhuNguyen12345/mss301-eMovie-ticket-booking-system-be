@@ -10,9 +10,14 @@ import org.springframework.data.domain.Page;
 import fu.mss301.common.dto.PageResponseDTO;
 import fu.mss301.movie.dto.MovieRequestDTO;
 import fu.mss301.movie.dto.MovieResponseDTO;
+import fu.mss301.movie.dto.MovieDetailResponseDTO;
+import fu.mss301.movie.dto.GenreResponseDTO;
+import fu.mss301.movie.dto.MovieCreditResponseDTO;
 import fu.mss301.movie.entity.Movie;
 import fu.mss301.movie.enums.MovieStatus;
 import fu.mss301.movie.repository.MovieRepository;
+import fu.mss301.movie.repository.MovieGenreRepository;
+import fu.mss301.movie.repository.MovieCreditRepository;
 import fu.mss301.movie.service.MovieService;
 import jakarta.persistence.EntityManager;
 import fu.mss301.movie.exception.*;
@@ -23,10 +28,19 @@ public class MovieServiceImpl implements MovieService {
 
     private final MovieRepository movieRepository; 
     private final EntityManager entityManager; 
+    private final MovieGenreRepository movieGenreRepository;
+    private final MovieCreditRepository movieCreditRepository;
 
-    public MovieServiceImpl (MovieRepository movieRepository, EntityManager entityManager) {
+    public MovieServiceImpl (
+        MovieRepository movieRepository,
+        EntityManager entityManager,
+        MovieGenreRepository movieGenreRepository,
+        MovieCreditRepository movieCreditRepository
+    ) {
         this.movieRepository = movieRepository; 
         this.entityManager = entityManager; 
+        this.movieGenreRepository = movieGenreRepository;
+        this.movieCreditRepository = movieCreditRepository;
     }
 
     @Override
@@ -87,8 +101,23 @@ public class MovieServiceImpl implements MovieService {
     }
 
     @Override
-    public MovieResponseDTO getMovieById(Integer id) {
-        return toResponseDTO(findMovieOrThrow(id)); 
+    public MovieDetailResponseDTO getMovieById(Integer id) {
+        Movie movie = findMovieOrThrow(id);
+        var genres = movieGenreRepository.findGenresByMovieId(id).stream()
+            .map(link -> new GenreResponseDTO(link.getGenre().getId(), link.getGenre().getName(),
+                link.getGenre().getDescription()))
+            .toList();
+        var credits = movieCreditRepository.findCreditsByMovieId(id).stream()
+            .map(credit -> new MovieCreditResponseDTO(credit.getId(), credit.getPerson().getId(),
+                credit.getPerson().getFullName(), credit.getCreditType(), credit.getCharacterName(),
+                credit.getDisplayOrder()))
+            .toList();
+        return new MovieDetailResponseDTO(
+            movie.getId(), movie.getTitle(), movie.getDescription(), movie.getDurationMinutes(),
+            movie.getReleaseDate(), movie.getLanguage(), movie.getAgeRating(), movie.getPosterUrl(),
+            movie.getTrailerUrl(), movie.getStatus(), movie.getCreatedAt(), movie.getUpdatedAt(),
+            genres, credits
+        );
     }
 
     @Override

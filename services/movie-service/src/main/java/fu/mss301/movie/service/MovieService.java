@@ -2,6 +2,7 @@ package fu.mss301.movie.service;
 import fu.mss301.common.dto.*;
 import fu.mss301.movie.dto.MovieResponseDTO;
 import fu.mss301.movie.dto.MovieRequestDTO;
+import fu.mss301.movie.dto.MovieDetailResponseDTO;
 import fu.mss301.movie.enums.MovieStatus;
 
 public interface MovieService {
@@ -12,7 +13,7 @@ public interface MovieService {
         int page, 
         int size
     );
-    MovieResponseDTO getMovieById(Integer id);
+    MovieDetailResponseDTO getMovieById(Integer id);
     MovieResponseDTO createMovie(MovieRequestDTO request);
     MovieResponseDTO updateMovie(Integer id, MovieRequestDTO request); 
     void expireMovie(Integer id);
