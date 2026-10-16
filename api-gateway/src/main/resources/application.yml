@@ -1,0 +1,59 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    web-application-type: reactive
+  config:
+    import: optional:file:./.env[.properties]
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 5s
+          routes:
+            - id: movie-service
+              uri: ${MOVIE_SERVICE_URI:lb://movie-service}
+              predicates:
+                - Path=/api/movies/**,/api/genres/**,/api/persons/**
+            - id: cinema-service
+              uri: ${CINEMA_SERVICE_URI:lb://cinema-service}
+              predicates:
+                - Path=/api/cinemas/**,/api/screens/**,/api/seats/**
+            - id: showtime-service
+              uri: ${SHOWTIME_SERVICE_URI:lb://showtime-service}
+              predicates:
+                - Path=/api/showtimes/**
+            - id: booking-service
+              uri: ${BOOKING_SERVICE_URI:lb://booking-service}
+              predicates:
+                - Path=/api/bookings/**,/api/payments/**
+            - id: user-service
+              uri: ${USER_SERVICE_URI:lb://user-service}
+              predicates:
+                - Path=/api/auth/**,/api/users/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+gateway:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: ${JWT_ISSUER:user-service}
+    audience: ${JWT_AUDIENCE:e-movie}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
