@@ -1,0 +1,118 @@
+name: emovie
+
+services:
+  showtime-db:
+    image: mysql:8.0.42
+    environment:
+      MYSQL_DATABASE: showtime_db
+      MYSQL_USER: showtime
+      MYSQL_PASSWORD: ${SHOWTIME_DB_PASSWORD:-showtime_local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local_root}
+    volumes:
+      - showtime-data:/var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u showtime showtime_db -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  movie-db:
+    image: mysql:8.0.42
+    environment:
+      MYSQL_DATABASE: movie_db
+      MYSQL_USER: movie
+      MYSQL_PASSWORD: ${MOVIE_DB_PASSWORD:-movie_local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local_root}
+    volumes:
+      - movie-data:/var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u movie movie_db -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  discovery-server:
+    build:
+      context: .
+      args:
+        MODULE: discovery-server
+    ports:
+      - "127.0.0.1:${EUREKA_PORT:-8761}:8761"
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8761/]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  movie-service:
+    build:
+      context: .
+      args:
+        MODULE: services/movie-service
+    environment:
+      DB_URL: jdbc:mysql://movie-db:3306/movie_db
+      DB_USERNAME: movie
+      DB_PASSWORD: ${MOVIE_DB_PASSWORD:-movie_local}
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-local}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-local}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-local}
+    depends_on:
+      movie-db:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8082/api/movies]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  showtime-service:
+    build:
+      context: .
+      args:
+        MODULE: services/showtime-service
+    environment:
+      DB_URL: jdbc:mysql://showtime-db:3306/showtime_db
+      DB_USERNAME: showtime
+      DB_PASSWORD: ${SHOWTIME_DB_PASSWORD:-showtime_local}
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      SHOWTIME_ZONE: Asia/Ho_Chi_Minh
+    depends_on:
+      showtime-db:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8084/actuator/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api-gateway:
+    build:
+      context: .
+      args:
+        MODULE: api-gateway
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env; see .env.example}
+      JWT_ISSUER: ${JWT_ISSUER:-user-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-e-movie}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8080/actuator/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  showtime-data:
+  movie-data:

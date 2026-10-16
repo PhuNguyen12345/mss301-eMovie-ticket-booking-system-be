@@ -4,7 +4,7 @@ Hệ thống đặt vé xem phim trực tuyến được xây dựng dựa trên
 
 ## 🚀 Công nghệ sử dụng
 
-* **Framework:** Spring Boot 3.x, Spring Cloud (Gateway, Netflix Eureka)
+* **Framework:** Spring Boot 4.0.8, Spring Cloud 2025.1.3 (Gateway, Netflix Eureka)
 * **Database:** MySQL (Database-per-service)
 * **Cache & Distributed Lock:** Redis
 * **Inter-service Communication:** Spring Cloud OpenFeign (Synchronous) & `@Async` (Asynchronous)
@@ -49,6 +49,15 @@ e-movie-ticket-booking-system/
 * **Showtime Service:** Kết hợp dữ liệu từ Movie và Cinema để tạo ra các suất chiếu cụ thể. Service này thực hiện các logic kiểm tra phức tạp để đảm bảo không có sự xung đột về thời gian và phòng chiếu.
 * **Booking Service:** "Trái tim" của hệ thống phân tán. Chịu trách nhiệm gọi chéo OpenFeign để tổng hợp dữ liệu, sử dụng **Redis** để thiết lập khóa phân tán (Distributed Lock) chống trùng ghế và đếm ngược thời gian (TTL). Nó cũng tích hợp API PayOS/SePay để xử lý Webhook thanh toán và chạy luồng `@Async` gửi email xác nhận.
 * **User Service:** Đảm nhận việc cấp phát "chứng minh thư" (JWT) khi người dùng đăng nhập. Lưu trữ thông tin cá nhân và hứng các sự kiện từ Booking Service để cập nhật lịch sử đặt vé của khách hàng.
+
+## Docker
+
+Gateway, Showtime Service, Movie Service, Eureka and MySQL can run with Docker Compose.
+
+```bash
+cp .env.example .env
+docker compose up --build -d --wait
+```
 
 ## ⚙️ Hướng dẫn khởi chạy cục bộ
 
