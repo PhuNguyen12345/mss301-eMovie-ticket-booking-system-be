@@ -1,0 +1,20 @@
+CREATE TABLE pending_registrations (
+    id VARCHAR(36) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    otp_hash VARCHAR(255) NOT NULL,
+    expires_at DATETIME(6) NOT NULL,
+    next_otp_send_at DATETIME(6) NOT NULL,
+    failed_attempts INT NOT NULL DEFAULT 0,
+    resend_count INT NOT NULL DEFAULT 0,
+    otp_delivery_status ENUM('FAILED', 'PENDING', 'SENT') NOT NULL DEFAULT 'PENDING',
+    confirmed_at DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_pending_registrations_email UNIQUE (email),
+    KEY idx_pending_registrations_expires_at (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

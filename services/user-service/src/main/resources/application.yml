@@ -1,0 +1,88 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: user-service
+
+  config:
+    import: optional:file:./.env[.properties]
+
+  datasource:
+    url: ${USER_DB_URL}
+    username: ${USER_DB_USERNAME}
+    password: ${USER_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS:true}
+      mail.smtp.ssl.enable: ${SMTP_SSL:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+      mail.debug: false
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+
+jwt:
+  issuer: ${JWT_ISSUER:user-service}
+  audience: ${JWT_AUDIENCE:e-movie-api}
+  access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
+  refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P30D}
+  key-id: ${JWT_KEY_ID:user-service-rsa-1}
+  private-key-location: ${JWT_PRIVATE_KEY_LOCATION}
+  public-key-location: ${JWT_PUBLIC_KEY_LOCATION}
+
+gateway:
+  shared-secret: ${GATEWAY_SHARED_SECRET:}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.yourpackage.app: INFO
+    org.flywaydb: INFO
+
+registration:
+  otp:
+    mail-from: ${SMTP_FROM}
+    ttl: ${REGISTRATION_OTP_TTL:PT5M}
+    resend-cooldown: ${REGISTRATION_OTP_RESEND_COOLDOWN:PT60S}
+    max-resends: ${REGISTRATION_OTP_MAX_RESENDS:5}
+
+password:
+  otp:
+    mail-from: ${SMTP_FROM}
+    ttl: ${PASSWORD_CHANGE_OTP_TTL:PT5M}
+    resend-cooldown: ${PASSWORD_CHANGE_OTP_RESEND_COOLDOWN:PT60S}
+    max-attempts: ${PASSWORD_CHANGE_OTP_MAX_ATTEMPTS:5}
