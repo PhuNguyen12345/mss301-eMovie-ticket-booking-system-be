@@ -1,0 +1,73 @@
+services:
+  test-db:
+    image: mysql:8.0.42
+    environment:
+      MYSQL_DATABASE: showtime_test
+      MYSQL_USER: showtime
+      MYSQL_PASSWORD: showtime_test
+      MYSQL_ROOT_PASSWORD: test_root
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD=showtime_test mysql -h 127.0.0.1 -u showtime showtime_test -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  tests:
+    build:
+      context: .
+      target: test
+    environment:
+      SHOWTIME_TEST_DB_URL: jdbc:mysql://test-db:3306/showtime_test
+      SHOWTIME_TEST_DB_USERNAME: showtime
+      SHOWTIME_TEST_DB_PASSWORD: showtime_test
+    volumes:
+      - maven-test-cache:/root/.m2
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  contract-stub:
+    image: python:3.13-alpine
+    command: [python, /tests/stub.py]
+    volumes:
+      - ./tests/smoke:/tests:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  showtime-service:
+    environment:
+      CINEMA_SERVICE_URL: http://contract-stub:8090
+
+  api-gateway:
+    environment:
+      CINEMA_SERVICE_URI: http://contract-stub:8090
+      USER_SERVICE_URI: http://contract-stub:8090
+      BOOKING_SERVICE_URI: http://contract-stub:8090
+
+  smoke:
+    image: python:3.13-alpine
+    command: [python, /tests/check.py]
+    environment:
+      GATEWAY_URL: http://api-gateway:8080
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-user-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-e-movie}
+    volumes:
+      - ./tests/smoke:/tests:ro
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      showtime-service:
+        condition: service_healthy
+      movie-service:
+        condition: service_healthy
+      contract-stub:
+        condition: service_healthy
+
+volumes:
+  maven-test-cache:
