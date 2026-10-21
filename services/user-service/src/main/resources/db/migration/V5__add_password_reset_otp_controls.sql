@@ -1,0 +1,4 @@
+ALTER TABLE password_reset_otps
+    ADD COLUMN failed_attempts INT NOT NULL DEFAULT 0,
+    ADD COLUMN otp_delivery_status ENUM('FAILED', 'PENDING', 'SENT') NOT NULL DEFAULT 'PENDING',
+    ADD COLUMN version BIGINT NOT NULL DEFAULT 0;

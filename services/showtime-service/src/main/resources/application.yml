@@ -1,0 +1,44 @@
+server:
+  port: ${SERVER_PORT:8084}
+
+spring:
+  application:
+    name: showtime-service
+  config:
+    import: optional:file:./.env[.properties]
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 2000
+            readTimeout: 3000
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+showtime:
+  zone: ${SHOWTIME_ZONE:Asia/Ho_Chi_Minh}
+  clients:
+    movie-url: ${MOVIE_SERVICE_URL:}
+    cinema-url: ${CINEMA_SERVICE_URL:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
