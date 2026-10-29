@@ -1,0 +1,68 @@
+server:
+  port: ${SERVER_PORT:8085}
+
+spring:
+  application:
+    name: booking-service
+
+  config:
+    import: optional:file:./.env[.properties]
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 2000
+            readTimeout: 3000
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+booking:
+  zone: ${BOOKING_ZONE:Asia/Ho_Chi_Minh}
+  hold-ttl: ${BOOKING_HOLD_TTL:PT5M}
+  max-seats: ${BOOKING_MAX_SEATS:8}
+  expiry-scan-interval: ${BOOKING_EXPIRY_SCAN_INTERVAL:PT30S}
+  expiry-batch-size: ${BOOKING_EXPIRY_BATCH_SIZE:100}
+  clients:
+    showtime-url: ${SHOWTIME_SERVICE_URL:}
+    cinema-url: ${CINEMA_SERVICE_URL:}
+
+payos:
+  client-id: ${PAYOS_CLIENT_ID:}
+  api-key: ${PAYOS_API_KEY:}
+  checksum-key: ${PAYOS_CHECKSUM_KEY:}
+  return-url: ${PAYOS_RETURN_URL:http://localhost:5173/payment/result}
+  cancel-url: ${PAYOS_CANCEL_URL:http://localhost:5173/payment/result}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
