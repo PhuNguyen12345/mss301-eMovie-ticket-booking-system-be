@@ -31,6 +31,21 @@ services:
       timeout: 3s
       retries: 30
 
+  booking-db:
+    image: mysql:8.0.42
+    environment:
+      MYSQL_DATABASE: booking_db
+      MYSQL_USER: booking
+      MYSQL_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local_root}
+    volumes:
+      - booking-data:/var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u booking booking_db -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   discovery-server:
     build:
       context: .
@@ -91,6 +106,34 @@ services:
       timeout: 3s
       retries: 30
 
+  booking-service:
+    build:
+      context: .
+      args:
+        MODULE: services/booking-service
+    environment:
+      DB_URL: jdbc:mysql://booking-db:3306/booking_db
+      DB_USERNAME: booking
+      DB_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_local}
+      EUREKA_URL: http://discovery-server:8761/eureka/
+      BOOKING_ZONE: Asia/Ho_Chi_Minh
+      BOOKING_HOLD_TTL: ${BOOKING_HOLD_TTL:-PT5M}
+      PAYOS_CLIENT_ID: ${PAYOS_CLIENT_ID:-}
+      PAYOS_API_KEY: ${PAYOS_API_KEY:-}
+      PAYOS_CHECKSUM_KEY: ${PAYOS_CHECKSUM_KEY:-}
+      PAYOS_RETURN_URL: ${PAYOS_RETURN_URL:-http://localhost:5173/payment/result}
+      PAYOS_CANCEL_URL: ${PAYOS_CANCEL_URL:-http://localhost:5173/payment/result}
+    depends_on:
+      booking-db:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8085/actuator/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   api-gateway:
     build:
       context: .
@@ -116,3 +159,4 @@ services:
 volumes:
   showtime-data:
   movie-data:
+  booking-data:
