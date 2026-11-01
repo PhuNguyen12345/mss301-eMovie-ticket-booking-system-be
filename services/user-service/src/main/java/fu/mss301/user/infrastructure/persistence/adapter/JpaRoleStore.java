@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.persistence.adapter;
 
-import fu.mss301.user.application.port.out.RoleStore;
+import fu.mss301.user.domain.repository.RoleStore;
 import fu.mss301.user.domain.model.RoleName;
 import fu.mss301.user.domain.model.UserRole;
 import fu.mss301.user.infrastructure.persistence.repository.RoleRepository;

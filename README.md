@@ -52,7 +52,7 @@ e-movie-ticket-booking-system/
 
 ## Docker
 
-Gateway, Showtime Service, Movie Service, Eureka and MySQL can run with Docker Compose.
+Gateway, User Service, Showtime Service, Movie Service, Eureka and MySQL can run with Docker Compose. User Service is reachable only from Gateway and its own database network; it has no published host port. See [User Service gateway security](docs/USER_SERVICE_GATEWAY_SECURITY.md) before deploying outside Compose.
 
 ```bash
 cp .env.example .env

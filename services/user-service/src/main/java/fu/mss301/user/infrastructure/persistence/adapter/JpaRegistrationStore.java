@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.persistence.adapter;
 
-import fu.mss301.user.application.port.out.RegistrationStore;
+import fu.mss301.user.domain.repository.RegistrationStore;
 import fu.mss301.user.domain.model.Registration;
 import fu.mss301.user.infrastructure.persistence.entity.PendingRegistration;
 import fu.mss301.user.infrastructure.persistence.repository.PendingRegistrationRepository;

@@ -1,10 +1,10 @@
 server:
   port: ${SERVER_PORT:8081}
+  address: ${SERVER_ADDRESS:127.0.0.1}
 
 spring:
   application:
     name: user-service
-
   config:
     import: optional:file:./.env[.properties]
 
@@ -56,15 +56,10 @@ eureka:
 
 jwt:
   issuer: ${JWT_ISSUER:user-service}
-  audience: ${JWT_AUDIENCE:e-movie-api}
+  audience: ${JWT_AUDIENCE:e-movie}
   access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P30D}
-  key-id: ${JWT_KEY_ID:user-service-rsa-1}
-  private-key-location: ${JWT_PRIVATE_KEY_LOCATION}
-  public-key-location: ${JWT_PUBLIC_KEY_LOCATION}
-
-gateway:
-  shared-secret: ${GATEWAY_SHARED_SECRET:}
+  secret: ${JWT_SECRET:xQAtDQG6PRYfRwsOL8PODKyatJGXVtXWKeZOmeMlvvOpSYKpsYawIq1oSnVkljWK}
 
 logging:
   level:

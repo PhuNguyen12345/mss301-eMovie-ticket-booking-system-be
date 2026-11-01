@@ -2,13 +2,13 @@ package fu.mss301.user.infrastructure.security;
 
 import fu.mss301.user.application.port.in.*;
 import fu.mss301.user.infrastructure.config.JwtProperties;
-import fu.mss301.user.application.dto.LoginResponse;
-import fu.mss301.user.application.dto.LoginResponse.LoginUserResponse;
+import fu.mss301.user.application.usecase.dto.LoginResponse;
+import fu.mss301.user.application.usecase.dto.LoginResponse.LoginUserResponse;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -36,8 +36,7 @@ public class JwtServiceImpl implements JwtService {
                 .id(UUID.randomUUID().toString())
                 .claim("roles", user.roles().stream().map(Enum::name).sorted().toList())
                 .build();
-        var header = JwsHeader.with(SignatureAlgorithm.RS256)
-                .type("JWT").keyId(properties.keyId()).build();
+        var header = JwsHeader.with(MacAlgorithm.HS256).type("JWT").build();
         var token = encoder.encode(JwtEncoderParameters.from(header, claims));
         return new LoginResponse(token.getTokenValue(), "Bearer", properties.accessTokenTtl().getSeconds(),
                 null, 0, user);

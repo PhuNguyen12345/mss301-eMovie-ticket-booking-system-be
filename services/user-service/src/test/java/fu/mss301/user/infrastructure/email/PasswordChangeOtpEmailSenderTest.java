@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
-import fu.mss301.user.application.event.PasswordChangeOtpRequested;
+import fu.mss301.user.domain.event.PasswordChangeOtpRequested;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;

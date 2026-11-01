@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.persistence.adapter;
 
-import fu.mss301.user.application.port.out.PasswordOtpStore;
+import fu.mss301.user.domain.repository.PasswordOtpStore;
 import fu.mss301.user.domain.model.PasswordOtp;
 import fu.mss301.user.domain.model.PasswordOtpPurpose;
 import fu.mss301.user.infrastructure.persistence.entity.PasswordResetOtp;
