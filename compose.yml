@@ -1,6 +1,21 @@
 name: emovie
 
 services:
+  cinema-db:
+    image: mysql:8.0.42
+    environment:
+      MYSQL_DATABASE: cinema_db
+      MYSQL_USER: cinema
+      MYSQL_PASSWORD: ${CINEMA_DB_PASSWORD:-cinema_local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local_root}
+    volumes:
+      - cinema-data:/var/lib/mysql
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -h 127.0.0.1 -u cinema cinema_db -e "SELECT 1"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   showtime-db:
     image: mysql:8.0.42
     environment:
@@ -123,6 +138,27 @@ services:
       timeout: 3s
       retries: 30
 
+  cinema-service:
+    build:
+      context: .
+      args:
+        MODULE: services/cinema-service
+    environment:
+      DB_URL: jdbc:mysql://cinema-db:3306/cinema_db
+      DB_USERNAME: cinema
+      DB_PASSWORD: ${CINEMA_DB_PASSWORD:-cinema_local}
+      EUREKA_URL: http://discovery-server:8761/eureka/
+    depends_on:
+      cinema-db:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://localhost:8083/actuator/health]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   booking-service:
     build:
       context: .
@@ -161,7 +197,7 @@ services:
       USER_DB_URL: jdbc:mysql://user-db:3306/user_db
       USER_DB_USERNAME: user_service
       USER_DB_PASSWORD: ${USER_DB_PASSWORD:-user_local}
-      JWT_SECRET: ${JWT_SECRET:}
+      JWT_SECRET: ${JWT_SECRET:-}
       JWT_ISSUER: ${JWT_ISSUER:-user-service}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-e-movie}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.invalid}
@@ -206,6 +242,7 @@ services:
       retries: 30
 
 volumes:
+  cinema-data:
   showtime-data:
   movie-data:
   booking-data:
