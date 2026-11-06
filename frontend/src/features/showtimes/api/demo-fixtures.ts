@@ -1,3 +1,4 @@
+import { localDate, addDays, hasStarted } from "../../../lib/date";
 export type SeatPrice = { seatTypeId: number; price: number };
 export type Showtime = {
   id: number;
@@ -11,67 +12,17 @@ export type Showtime = {
   prices: SeatPrice[];
 };
 export const movies = [
-  {
-    id: 1,
-    title: "Interstellar",
-    subtitle: "Hành trình vượt không gian",
-    duration: 169,
-    age: "T13",
-    genre: "Khoa học viễn tưởng",
-    art: "space",
-    year: "2014",
-  },
-  {
-    id: 2,
-    title: "Dune: Part Two",
-    subtitle: "Hành tinh cát: Phần hai",
-    duration: 166,
-    age: "T16",
-    genre: "Phiêu lưu",
-    art: "dune",
-    year: "2024",
-  },
-  {
-    id: 3,
-    title: "Spirited Away",
-    subtitle: "Vùng đất linh hồn",
-    duration: 125,
-    age: "P",
-    genre: "Hoạt hình",
-    art: "spirit",
-    year: "2001",
-  },
-  {
-    id: 4,
-    title: "La La Land",
-    subtitle: "Những kẻ khờ mộng mơ",
-    duration: 128,
-    age: "T13",
-    genre: "Âm nhạc",
-    art: "jazz",
-    year: "2016",
-  },
-];
-export const cinemas = [
-  { id: 1, name: "eMovie Thảo Điền", location: "Thành phố Hồ Chí Minh" },
-  { id: 2, name: "eMovie Tràng Tiền", location: "Hà Nội" },
+  { id: 1, title: "Interstellar", duration: 169, age: "T13" },
+  { id: 2, title: "Dune: Part Two", duration: 166, age: "T16" },
+  { id: 3, title: "Spirited Away", duration: 125, age: "P" },
+  { id: 4, title: "La La Land", duration: 128, age: "T13" },
 ];
 export const seatTypes = [
   { id: 1, name: "Standard", description: "Ghế tiêu chuẩn" },
   { id: 2, name: "VIP", description: "Vị trí đẹp, thêm thoải mái" },
   { id: 3, name: "Couple", description: "Ghế đôi, cùng trải nghiệm" },
 ];
-export const localDate = (date = new Date()) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-export const today = localDate();
-export const money = (value: number) =>
-  new Intl.NumberFormat("vi-VN").format(value);
-export const time = (value: string) => value.slice(11, 16);
-export function addDays(date: string, count: number) {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + count);
-  return localDate(d);
-}
+const today = localDate();
 const key = "emovie-studio-demo-v1";
 
 function seed(): Showtime[] {
@@ -147,7 +98,11 @@ export function createShow(
 ): Showtime {
   const movie = movies.find((m) => m.id === input.movieId);
   const start = new Date(input.startTime);
-  if (!movie || !Number.isFinite(start.getTime()) || start <= new Date())
+  if (
+    !movie ||
+    !Number.isFinite(start.getTime()) ||
+    hasStarted(input.startTime)
+  )
     throw new Error("Vui lòng chọn phim và giờ chiếu trong tương lai.");
   validatePrices([{ seatTypeId: 1, price: input.basePrice }]);
   const end = new Date(start.getTime() + movie.duration * 60000);

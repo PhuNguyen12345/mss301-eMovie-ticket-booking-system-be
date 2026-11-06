@@ -5,23 +5,22 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("filtering and selecting a show updates its price editor", async ({
+test("filters select the correct movie and show an empty result", async ({
   page,
 }) => {
   await expect(
-    page.getByRole("heading", { name: "Lịch chiếu.", level: 1 }),
+    page.getByRole("heading", { name: "Lịch chiếu", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Tìm phim").fill("Dune");
+  await page.getByLabel("Phim", { exact: true }).selectOption("2");
   await expect(page.locator(".show-row")).toHaveCount(1);
-  await expect(page.locator(".price-panel h2").first()).toHaveText(
-    "Dune: Part Two",
-  );
-  await page.getByLabel("Lọc phòng").selectOption("1");
-  await expect(page.getByText("Khung giờ còn rộng mở")).toBeVisible();
-  await expect(page.locator(".no-selection")).toBeVisible();
+  await expect(page.locator(".panel-header p")).toHaveText("Dune: Part Two");
+  await page.getByLabel("Mã phòng", { exact: true }).fill("1");
+  await expect(
+    page.getByText("Không có suất chiếu", { exact: true }),
+  ).toBeVisible();
 });
 
-test("prices save, survive reload and can be reset to base-price fallback", async ({
+test("prices persist across reload and can be reset to base price", async ({
   page,
 }) => {
   await page.getByLabel("Giá VIP", { exact: true }).fill("155000");
@@ -39,18 +38,19 @@ test("prices save, survive reload and can be reset to base-price fallback", asyn
   await expect(page.getByRole("status")).toContainText("áp dụng giá cơ bản");
 });
 
-test("overlapping creation is rejected and a new slot can be cancelled", async ({
+test("overlap rejection, creation and cancellation use the same data hooks", async ({
   page,
 }) => {
   await page
     .getByRole("button", { name: "Tạo suất chiếu", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Phim", { exact: true }).selectOption("1");
   await dialog
     .getByRole("button", { name: "Tạo suất chiếu", exact: true })
     .click();
   await expect(dialog.getByRole("alert")).toContainText("đã có suất chiếu");
-  await dialog.locator("[name=time]").fill("14:00");
+  await dialog.getByLabel("Giờ bắt đầu").fill("14:00");
   await dialog
     .getByRole("button", { name: "Tạo suất chiếu", exact: true })
     .click();
@@ -62,17 +62,14 @@ test("overlapping creation is rejected and a new slot can be cancelled", async (
     .click();
   await page.getByRole("button", { name: "Xác nhận hủy", exact: true }).click();
   await expect(page.locator(".show-row")).toHaveCount(5);
-  await page.getByLabel("Lọc trạng thái").selectOption("CANCELLED");
+  await page.getByLabel("Trạng thái").selectOption("CANCELLED");
   await expect(page.locator(".show-row")).toHaveCount(1);
-  await expect(page.locator(".panel-footer")).toContainText(
-    "Suất chiếu đã hủy",
-  );
 });
 
-test("dialogs support Escape and creation works in another cinema", async ({
+test("dialogs support Escape and a new cinema can receive a show", async ({
   page,
 }) => {
-  await page.getByLabel("RẠP ĐANG QUẢN LÝ").selectOption("2");
+  await page.getByLabel("Mã rạp", { exact: true }).fill("2");
   await expect(page.locator(".show-row")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Tạo suất chiếu", exact: true })
@@ -84,26 +81,36 @@ test("dialogs support Escape and creation works in another cinema", async ({
     .click();
   await page
     .getByRole("dialog")
+    .getByLabel("Phim", { exact: true })
+    .selectOption("1");
+  await page
+    .getByRole("dialog")
     .getByRole("button", { name: "Tạo suất chiếu", exact: true })
     .click();
   await expect(page.locator(".show-row")).toHaveCount(1);
 });
 
-test("mobile layout fits viewport and price editing remains usable", async ({
+test("mobile is dark, uses the Vietnamese font, and supports editing without overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".show-row")).toHaveCount(5);
-  const overflows = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  );
-  expect(overflows).toBe(false);
+  await page.evaluate(() => document.fonts.ready);
+  const style = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    viewport: innerWidth,
+    font: getComputedStyle(document.body).fontFamily,
+    scheme: getComputedStyle(document.documentElement).colorScheme,
+  }));
+  expect(style.width).toBeLessThanOrEqual(style.viewport);
+  expect(style.font).toContain("Noto Sans Variable");
+  expect(style.scheme).toBe("dark");
   await page.getByLabel("Giá Standard", { exact: true }).fill("99000");
   await page.getByRole("button", { name: "Lưu bảng giá", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Đã cập nhật");
 });
 
-test("week navigation retains the visible week when selecting another day", async ({
+test("changing the selected day does not move the visible week", async ({
   page,
 }) => {
   await page.getByRole("button", { name: "Tuần sau", exact: true }).click();
@@ -114,4 +121,21 @@ test("week navigation retains the visible week when selecting another day", asyn
   expect(await days.allTextContents()).toEqual(labels);
   await page.getByRole("button", { name: "Tuần trước", exact: true }).click();
   await expect(page.locator(".show-row")).toHaveCount(5);
+});
+
+test("unsaved prices are protected when switching showtimes", async ({
+  page,
+}) => {
+  await page.getByLabel("Giá VIP", { exact: true }).fill("155000");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.locator(".show-row").nth(1).click();
+  await expect(page.getByLabel("Giá VIP", { exact: true })).toHaveValue(
+    "155000",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator(".show-row").nth(1).click();
+  await expect(page.locator(".panel-header p")).toHaveText("Dune: Part Two");
+  await expect(page.getByLabel("Giá VIP", { exact: true })).toHaveValue(
+    "125000",
+  );
 });

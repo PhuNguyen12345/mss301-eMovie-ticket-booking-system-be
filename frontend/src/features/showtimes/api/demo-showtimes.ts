@@ -5,7 +5,8 @@ import {
   persist,
   seatTypes,
   validatePrices,
-} from "../../../demo";
+} from "./demo-fixtures";
+import { hasStarted } from "../../../lib/date";
 import { ApiError } from "../../../lib/http";
 import type { ShowtimeRepository } from "../model/contracts";
 
@@ -73,7 +74,7 @@ export function createDemoShowtimes(): ShowtimeRepository {
     },
     async cancel(id) {
       const { show, shows } = find(id);
-      if (show.status !== "CANCELLED" && new Date(show.startTime) <= new Date())
+      if (show.status !== "CANCELLED" && hasStarted(show.startTime))
         throw new ApiError(409, "Suất chiếu đã bắt đầu, không thể hủy.");
       const updated = { ...show, status: "CANCELLED" as const };
       persist(shows.map((s) => (s.id === id ? updated : s)));
