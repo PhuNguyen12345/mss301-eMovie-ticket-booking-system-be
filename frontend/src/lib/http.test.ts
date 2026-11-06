@@ -103,4 +103,40 @@ describe("HTTP boundary", () => {
     ).rejects.toBe(abort);
     expect(shouldRetryQuery(0, abort)).toBe(false);
   });
+  it("preserves HTTP failure status when a proxy returns HTML", async () => {
+    const client = createHttpClient({
+      baseUrl: "/api",
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response("<h1>Bad Gateway</h1>", { status: 502 }),
+        ),
+    });
+    await expect(
+      client.request("/showtimes", z.unknown()),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "HTTP_ERROR",
+    });
+  });
+  it("reports rejected login credentials without clearing another session", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createHttpClient({
+      baseUrl: "/api",
+      accessToken: () => "existing-token",
+      onUnauthorized,
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(response(null, 401)),
+    });
+    await expect(
+      client.request("/auth/login", z.unknown(), {
+        method: "POST",
+        anonymous: true,
+        body: {},
+      }),
+    ).rejects.toMatchObject({
+      status: 401,
+      message: "Email hoặc mật khẩu không đúng.",
+    });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
 });

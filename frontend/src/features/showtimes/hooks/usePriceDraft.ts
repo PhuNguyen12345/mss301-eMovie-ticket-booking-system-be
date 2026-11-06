@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PriceInput, SeatPrice, SeatType } from "../model/contracts";
 
 type Values = Record<number, string>;
@@ -53,14 +53,17 @@ export function usePriceDraft(prices: SeatPrice[], types: SeatType[]) {
         .sort((a, b) => a - b),
     [values],
   );
-  function reset(next: SeatPrice[] = prices) {
-    const fresh = toValues(next, types);
-    setValues(fresh);
-    setBaseline({ signature: signature(next), values: fresh });
-  }
+  const reset = useCallback(
+    (next: SeatPrice[] = prices) => {
+      const fresh = toValues(next, types);
+      setValues(fresh);
+      setBaseline({ signature: signature(next), values: fresh });
+    },
+    [prices, types],
+  );
   useEffect(() => {
     if (!dirty && remoteChanged) reset(prices);
-  }, [dirty, remoteSignature]);
+  }, [dirty, remoteChanged, prices, reset]);
   return {
     values,
     fields,

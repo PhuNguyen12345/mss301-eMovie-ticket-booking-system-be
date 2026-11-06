@@ -6,7 +6,11 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createHttpClient, shouldRetryQuery } from "../lib/http";
 import { createSessionStore } from "../features/auth/session";
 import { createDemoShowtimes } from "../features/showtimes/api/demo-showtimes";
@@ -63,6 +67,7 @@ export function useServices() {
 }
 export function useSession() {
   const { session, client, showtimes } = useServices();
+  const queryClient = useQueryClient();
   const current = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useEffect(() => {
     if (!current) return;
@@ -78,8 +83,10 @@ export function useSession() {
     current,
     canWrite: showtimes.mode === "demo" || !!current,
     mode: showtimes.mode,
-    login: (email: string, password: string, signal?: AbortSignal) =>
-      session.login(client, email, password, signal),
+    login: async (email: string, password: string, signal?: AbortSignal) => {
+      await session.login(client, email, password, signal);
+      if (session.getSnapshot()) void queryClient.invalidateQueries();
+    },
     logout: session.clear,
   };
 }

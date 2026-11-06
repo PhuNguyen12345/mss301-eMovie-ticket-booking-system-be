@@ -88,18 +88,28 @@ export function createHttpClient(options: ClientOptions) {
       let payload: unknown;
       try {
         payload = await response.json();
-      } catch {
-        throw new ApiError(
-          response.status,
-          "Máy chủ trả về dữ liệu không hợp lệ.",
-          "INVALID_RESPONSE",
-        );
+      } catch (error) {
+        if (request.signal?.aborted) throw error;
+        if (timeout.aborted)
+          throw new ApiError(
+            0,
+            "Kết nối quá thời gian chờ. Vui lòng thử lại.",
+            "NETWORK_ERROR",
+          );
+        if (response.ok)
+          throw new ApiError(
+            response.status,
+            "Máy chủ trả về dữ liệu không hợp lệ.",
+            "INVALID_RESPONSE",
+          );
       }
       const parsed = envelope.safeParse(payload);
       if (!response.ok) {
         const message =
           response.status === 401
-            ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+            ? request.anonymous
+              ? "Email hoặc mật khẩu không đúng."
+              : "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
             : response.status === 403
               ? "Tài khoản không có quyền thực hiện thao tác này."
               : response.status >= 500
