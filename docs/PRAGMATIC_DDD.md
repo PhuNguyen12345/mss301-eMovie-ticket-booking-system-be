@@ -231,6 +231,10 @@ Lợi ích: đổi PayOS sang VNPay chỉ viết adapter mới; test dùng `@Moc
 
 ### 6.3 Ví dụ: `Showtime` (showtime-service)
 
+Showtime hiện đã chuyển sang Clean Architecture với rich domain thuần Java và JPA entity riêng.
+Xem [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md) cho thiết kế đang triển khai.
+Ví dụ dưới đây được giữ làm hướng dẫn chuyển đổi sang biến thể Pragmatic DDD.
+
 Hiện tại (minh hoạ, **chưa sửa code**):
 
 ```java

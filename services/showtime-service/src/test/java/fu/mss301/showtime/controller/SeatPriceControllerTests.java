@@ -1,11 +1,14 @@
 package fu.mss301.showtime.controller;
 
-import fu.mss301.showtime.entity.Showtime;
-import fu.mss301.showtime.entity.ShowtimeSeatPrice;
-import fu.mss301.showtime.exception.ShowtimeExceptionHandler;
-import fu.mss301.showtime.repository.ShowtimeRepository;
-import fu.mss301.showtime.repository.ShowtimeSeatPriceRepository;
-import fu.mss301.showtime.service.SeatPriceService;
+import fu.mss301.showtime.presentation.controller.*;
+
+import fu.mss301.showtime.domain.model.*;
+import fu.mss301.showtime.domain.repository.ShowtimeRepository;
+import fu.mss301.showtime.application.port.Transactions;
+import java.time.LocalDateTime;
+import java.util.function.Supplier;
+import fu.mss301.showtime.presentation.exception.ShowtimeExceptionHandler;
+import fu.mss301.showtime.application.usecase.SeatPriceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,26 +28,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class SeatPriceControllerTests {
     private ShowtimeRepository showtimes;
-    private ShowtimeSeatPriceRepository prices;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         showtimes = mock(ShowtimeRepository.class);
-        prices = mock(ShowtimeSeatPriceRepository.class);
-        var service = new SeatPriceService(showtimes, prices, Clock.systemUTC());
+        when(showtimes.findByIdForUpdate(7L)).thenAnswer(call -> Optional.of(showtime(List.of())));
+        when(showtimes.save(any())).thenAnswer(call -> call.getArgument(0));
+        var transactions = new Transactions() {
+            public <T> T read(Supplier<T> work) { return work.get(); }
+            public <T> T write(Supplier<T> work) { return work.get(); }
+        };
+        var service = new SeatPriceService(showtimes, transactions, Clock.systemUTC());
         mvc = MockMvcBuilders.standaloneSetup(new SeatPriceController(service))
             .setControllerAdvice(new ShowtimeExceptionHandler()).build();
     }
 
     @Test
     void returnsPriceRowIdAndBookingContract() throws Exception {
-        when(showtimes.existsById(7L)).thenReturn(true);
-        var price = new ShowtimeSeatPrice();
-        price.setId(77);
-        price.setSeatTypeId(2);
-        price.setPrice(new BigDecimal("150000"));
-        when(prices.findByShowtimeIdOrderBySeatTypeIdAsc(7L)).thenReturn(List.of(price));
+        var now = LocalDateTime.now();
+        var price = new SeatPrice(77, 2, new Price(new BigDecimal("150000")), now, now);
+        when(showtimes.findById(7L)).thenReturn(Optional.of(showtime(List.of(price))));
         mvc.perform(get("/api/showtimes/7/seat-prices")).andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value(200))
             .andExpect(jsonPath("$.message").value("Seat prices retrieved successfully"))
@@ -56,30 +60,29 @@ class SeatPriceControllerTests {
 
     @Test
     void unconfiguredShowtimeReturnsEmptyArray() throws Exception {
-        when(showtimes.existsById(7L)).thenReturn(true);
-        when(prices.findByShowtimeIdOrderBySeatTypeIdAsc(7L)).thenReturn(List.of());
+        when(showtimes.findById(7L)).thenReturn(Optional.of(showtime(List.of())));
         mvc.perform(get("/api/showtimes/7/seat-prices")).andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value(200)).andExpect(jsonPath("$.data").isEmpty());
     }
 
     @Test
     void missingShowtimeReturns404ForReadAndWrite() throws Exception {
+        when(showtimes.findByIdForUpdate(7L)).thenReturn(Optional.empty());
         mvc.perform(get("/api/showtimes/7/seat-prices")).andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404));
         mvc.perform(put("/api/showtimes/7/seat-prices").contentType(MediaType.APPLICATION_JSON).content("[]"))
             .andExpect(status().isNotFound()).andExpect(jsonPath("$.status").value(404));
-        verifyNoInteractions(prices);
+        verify(showtimes, never()).save(any());
     }
 
     @Test
     void emptyReplacementClearsPrices() throws Exception {
-        when(showtimes.findByIdForUpdate(7L)).thenReturn(Optional.of(new Showtime()));
-        var oldPrice = new ShowtimeSeatPrice();
-        oldPrice.setSeatTypeId(1);
-        when(prices.findByShowtimeIdOrderBySeatTypeIdAsc(7L)).thenReturn(List.of(oldPrice), List.of());
+        var now = LocalDateTime.now();
+        var oldPrice = new SeatPrice(77, 1, new Price(BigDecimal.TEN), now, now);
+        when(showtimes.findByIdForUpdate(7L)).thenReturn(Optional.of(showtime(List.of(oldPrice))));
         mvc.perform(put("/api/showtimes/7/seat-prices").contentType(MediaType.APPLICATION_JSON).content("[]"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data").isEmpty());
-        verify(prices).deleteAll(List.of(oldPrice));
+        verify(showtimes).save(argThat(showtime -> showtime.seatPrices().isEmpty()));
     }
 
     @ParameterizedTest
@@ -93,7 +96,7 @@ class SeatPriceControllerTests {
     void invalidReplacementReturns400WithoutWrites(String body) throws Exception {
         mvc.perform(put("/api/showtimes/7/seat-prices").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
-        verifyNoInteractions(prices);
+        verify(showtimes, never()).save(any());
     }
 
     @Test
@@ -102,6 +105,12 @@ class SeatPriceControllerTests {
         mvc.perform(get("/api/showtimes/no-id/seat-prices")).andExpect(status().isBadRequest());
         mvc.perform(put("/api/showtimes/-1/seat-prices").contentType(MediaType.APPLICATION_JSON).content("[]"))
             .andExpect(status().isBadRequest());
-        verifyNoInteractions(showtimes, prices);
+        verifyNoInteractions(showtimes);
+    }
+
+    private Showtime showtime(List<SeatPrice> prices) {
+        var start = LocalDateTime.of(2027, 1, 20, 18, 0);
+        return Showtime.restore(7L, new Schedule(1, 1, 1, "Ha Noi", start, start.plusHours(2),
+            new Price(BigDecimal.TEN)), ShowtimeStatus.SCHEDULED, start.minusDays(1), start.minusDays(1), prices);
     }
 }
