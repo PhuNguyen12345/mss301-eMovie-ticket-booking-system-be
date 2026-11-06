@@ -23,7 +23,7 @@ spring:
             - id: cinema-service
               uri: ${CINEMA_SERVICE_URI:lb://cinema-service}
               predicates:
-                - Path=/api/cinemas/**,/api/screens/**,/api/seats/**
+                - Path=/api/cinemas/**,/api/screens/**,/api/seats/**,/api/seat-types/**
             - id: showtime-service
               uri: ${SHOWTIME_SERVICE_URI:lb://showtime-service}
               predicates:
@@ -46,7 +46,7 @@ eureka:
 
 gateway:
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:xQAtDQG6PRYfRwsOL8PODKyatJGXVtXWKeZOmeMlvvOpSYKpsYawIq1oSnVkljWK}
     issuer: ${JWT_ISSUER:user-service}
     audience: ${JWT_AUDIENCE:e-movie}
   cors:

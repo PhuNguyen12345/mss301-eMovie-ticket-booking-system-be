@@ -30,7 +30,7 @@ import java.util.List;
 public class SecurityConfig {
     private static final String[] CATALOG_PATHS = {
         "/api/movies/**", "/api/genres/**", "/api/persons/**", "/api/cinemas/**",
-        "/api/screens/**", "/api/seats/**", "/api/showtimes/**"
+        "/api/screens/**", "/api/seats/**", "/api/seat-types/**", "/api/showtimes/**"
     };
 
     @Bean

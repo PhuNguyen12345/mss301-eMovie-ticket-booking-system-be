@@ -79,4 +79,4 @@ Checklist review đầy đủ: [PRAGMATIC_DDD.md – mục 4](PRAGMATIC_DDD.md#4
 | user-service | Hexagonal (DDD thuần, domain tách JPA) | Tương thích, không bắt buộc đổi |
 | movie-service | MVC 3 lớp | Refactor dần theo [PRAGMATIC_DDD.md – mục 6](PRAGMATIC_DDD.md#6-hướng-dẫn-refactor-service-mvc-sang-pragmatic-ddd) |
 | showtime-service | MVC 3 lớp | Refactor dần; ví dụ `Showtime` đã có trong mục 6.3 |
-| cinema-service | Chưa triển khai | Nên viết thẳng theo Pragmatic DDD; cần cung cấp `GET /api/screens/{screenId}/seats` cho booking |
+| cinema-service | Hexagonal như user-service | Domain, application, infrastructure; cung cấp API rạp, phòng và ghế vật lý. Xem [CINEMA_API.md](CINEMA_API.md) |
