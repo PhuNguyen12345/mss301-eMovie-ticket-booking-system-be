@@ -51,7 +51,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsSource))
             .authorizeExchange(auth -> auth
                 .pathMatchers(HttpMethod.GET, "/actuator/health").permitAll()
-                .pathMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                .pathMatchers(HttpMethod.POST,
+                    "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
+                    "/api/auth/register/verify", "/api/auth/register/resend-otp",
+                    "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                 .pathMatchers(HttpMethod.GET, CATALOG_PATHS).permitAll()
                 .pathMatchers(HttpMethod.HEAD, CATALOG_PATHS).permitAll()
                 .pathMatchers(CATALOG_PATHS).hasRole("ADMIN")
