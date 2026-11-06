@@ -80,6 +80,17 @@ class ShowtimeControllerTests {
     }
 
     @Test
+    void detailPreservesBookingFields() throws Exception {
+        when(service.getShowtimeById(7L)).thenReturn(response());
+        mvc.perform(get("/api/showtimes/7")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id").value(7))
+            .andExpect(jsonPath("$.data.screenId").value(1))
+            .andExpect(jsonPath("$.data.startTime").value("2027-01-20T18:00:00"))
+            .andExpect(jsonPath("$.data.basePrice").value(85000))
+            .andExpect(jsonPath("$.data.status").value("SCHEDULED"));
+    }
+
+    @Test
     void missingShowtimeReturns404() throws Exception {
         when(service.getShowtimeById(7L)).thenThrow(new ShowtimeNotFoundException(7L));
         mvc.perform(get("/api/showtimes/7")).andExpect(status().isNotFound())
