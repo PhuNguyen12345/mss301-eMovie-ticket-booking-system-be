@@ -24,28 +24,30 @@ class ArchitectureDependencyTest {
     @Test
     void domainHasNoFrameworkOrOuterLayerImports() throws IOException {
         assertImportsAvoid(SOURCE.resolve("domain"),
-                "jakarta.", "org.springframework.", "org.hibernate.",
-                "fu.mss301.user.application.", "fu.mss301.user.infrastructure.", "fu.mss301.user.presentation.");
+                "jakarta.", "org.springframework.", "org.hibernate.", "fu.mss301.common.",
+                "fu.mss301.user.application.", "fu.mss301.user.infrastructure.");
     }
 
     @Test
-    void applicationDoesNotImportAdaptersOrHttpPresentation() throws IOException {
+    void applicationDependsOnlyOnDomainAndPorts() throws IOException {
         assertImportsAvoid(SOURCE.resolve("application"),
-                "jakarta.persistence.", "org.springframework.data.jpa.",
-                "fu.mss301.user.infrastructure.", "fu.mss301.user.presentation.");
+                "jakarta.", "org.springframework.", "org.hibernate.",
+                "fu.mss301.common.", "fu.mss301.user.infrastructure.");
     }
 
     @Test
-    void presentationDoesNotImportInfrastructure() throws IOException {
-        assertImportsAvoid(SOURCE.resolve("presentation"),
+    void webDoesNotImportPersistenceOrOtherAdapters() throws IOException {
+        assertImportsAvoid(SOURCE.resolve("infrastructure/web"),
                 "jakarta.persistence.", "org.springframework.data.jpa.",
-                "fu.mss301.user.infrastructure.");
+                "fu.mss301.user.infrastructure.persistence.",
+                "fu.mss301.user.infrastructure.email.",
+                "fu.mss301.user.infrastructure.messaging.consumer.");
     }
 
     @Test
-    void infrastructureDoesNotImportPresentation() throws IOException {
-        assertImportsAvoid(SOURCE.resolve("infrastructure"),
-                "fu.mss301.user.presentation.");
+    void persistenceDoesNotImportWeb() throws IOException {
+        assertImportsAvoid(SOURCE.resolve("infrastructure/persistence"),
+                "fu.mss301.user.infrastructure.web.");
     }
 
     @Test

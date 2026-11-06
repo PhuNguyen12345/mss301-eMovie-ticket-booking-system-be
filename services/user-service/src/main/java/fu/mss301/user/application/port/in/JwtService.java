@@ -1,7 +1,7 @@
 package fu.mss301.user.application.port.in;
 
-import fu.mss301.user.application.dto.LoginResponse;
-import fu.mss301.user.application.dto.LoginResponse.LoginUserResponse;
+import fu.mss301.user.application.usecase.dto.LoginResponse;
+import fu.mss301.user.application.usecase.dto.LoginResponse.LoginUserResponse;
 
 public interface JwtService {
     LoginResponse issue(LoginUserResponse user);

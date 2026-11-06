@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
-import fu.mss301.user.application.event.RegistrationOtpRequested;
+import fu.mss301.user.domain.event.RegistrationOtpRequested;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
