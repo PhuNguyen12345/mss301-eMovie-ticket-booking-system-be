@@ -89,11 +89,79 @@ class BookingTest {
     void restoreLoadsAnOldBookingWithoutReapplyingBusinessRules() {
         var seat = BookingSeat.restore(5, 3L, null, 1, new BigDecimal("90000.00"), SeatHoldStatus.RELEASED, NOW, NOW);
         Booking booking = Booking.restore(42, 7, 3L, new BookingCode("BK260101000000ABCDEF"), NOW,
-            new BigDecimal("90000.00"), BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat));
+            new BigDecimal("90000.00"), BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat), List.of());
         assertEquals(BookingStatus.EXPIRED, booking.status());
         assertEquals(3, booking.version());
         assertEquals(5, booking.seats().getFirst().id());
         assertEquals(List.of(), booking.pullEvents());
+    }
+
+    @Test
+    void combosAddToTheTotal() {
+        Booking booking = hold(seat(1, "90000"), seat(2, "120000"));
+        booking.replaceCombos(List.of(combo(5, 2, "85000"), combo(6, 1, "40000")), NOW.plusMinutes(1));
+        assertEquals(new BigDecimal("420000.00"), booking.totalAmount());
+        assertEquals(List.of(5, 6), booking.combos().stream().map(BookingCombo::comboId).toList());
+        assertEquals(NOW.plusMinutes(1), booking.updatedAt());
+    }
+
+    @Test
+    void replacingRecalculatesAndAnEmptyListRemovesAllCombos() {
+        Booking booking = hold(seat(1, "90000"));
+        booking.replaceCombos(List.of(combo(5, 2, "85000")), NOW);
+        booking.replaceCombos(List.of(combo(6, 1, "40000")), NOW);
+        assertEquals(new BigDecimal("130000.00"), booking.totalAmount());
+        booking.replaceCombos(List.of(), NOW);
+        assertEquals(new BigDecimal("90000.00"), booking.totalAmount());
+        assertTrue(booking.combos().isEmpty());
+    }
+
+    @Test
+    void aKeptComboKeepsItsLineAndTakesTheNewQuantityAndPrice() {
+        Booking booking = persisted(hold(seat(1, "90000")));
+        var stored = BookingCombo.restore(77, 5, "Bắp nước", 2, new BigDecimal("85000.00"));
+        Booking restored = Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(),
+            booking.bookingTime(), new BigDecimal("260000.00"), booking.status(), booking.expiredAt(), 0,
+            booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored));
+        restored.replaceCombos(List.of(combo(5, 3, "95000"), combo(6, 1, "40000")), NOW);
+        assertEquals(77, restored.combos().getFirst().id());
+        assertEquals(3, restored.combos().getFirst().quantity());
+        assertEquals(new BigDecimal("95000.00"), restored.combos().getFirst().price());
+        assertNull(restored.combos().getLast().id());
+        assertEquals(new BigDecimal("415000.00"), restored.totalAmount());
+    }
+
+    @Test
+    void invalidCombosAreRejectedAndLeaveTheBookingUntouched() {
+        Booking booking = hold(seat(1, "90000"));
+        booking.replaceCombos(List.of(combo(5, 1, "85000")), NOW);
+        assertThrows(DomainException.class, () -> booking.replaceCombos(List.of(combo(6, 0, "40000")), NOW));
+        assertThrows(DomainException.class, () -> booking.replaceCombos(List.of(combo(6, -1, "40000")), NOW));
+        assertThrows(DomainException.class, () -> booking.replaceCombos(List.of(combo(6, 21, "40000")), NOW));
+        assertThrows(DomainException.class, () -> booking.replaceCombos(List.of(combo(6, 1, "40000"), combo(6, 2, "40000")), NOW));
+        assertThrows(DomainException.class, () -> booking.replaceCombos(List.of(combo(6, 2, "99999999")), NOW));
+        assertEquals(new BigDecimal("175000.00"), booking.totalAmount());
+        assertEquals(List.of(5), booking.combos().stream().map(BookingCombo::comboId).toList());
+    }
+
+    @Test
+    void combosCanOnlyChangeWhileAwaitingPaymentAndBeforeTheHoldExpires() {
+        Booking confirmed = persisted(hold(seat(1, "90000")));
+        confirmed.confirm(NOW);
+        assertThrows(InvalidStateTransitionException.class, () -> confirmed.replaceCombos(List.of(), NOW));
+
+        Booking overdue = hold(seat(1, "90000"));
+        assertThrows(InvalidStateTransitionException.class, () -> overdue.replaceCombos(List.of(), NOW.plus(TTL)));
+    }
+
+    @Test
+    void combosCannotBeModifiedFromOutside() {
+        Booking booking = hold(seat(1, "90000"));
+        assertThrows(UnsupportedOperationException.class, () -> booking.combos().clear());
+    }
+
+    private static ComboSelection combo(int id, int quantity, String price) {
+        return new ComboSelection(id, "Combo " + id, quantity, new BigDecimal(price).setScale(2));
     }
 
     private static Booking hold(SeatSelection... seats) {
@@ -107,6 +175,6 @@ class BookingTest {
     private static Booking persisted(Booking booking) {
         return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.bookingTime(),
             booking.totalAmount(), booking.status(), booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(),
-            booking.seats());
+            booking.seats(), booking.combos());
     }
 }

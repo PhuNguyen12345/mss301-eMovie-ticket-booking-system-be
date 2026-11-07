@@ -33,7 +33,7 @@ public class BookingEntity {
     @Column(name = "booking_time", nullable = false, updatable = false)
     private LocalDateTime bookingTime;
 
-    @Column(name = "total_amount", nullable = false, updatable = false, precision = 10, scale = 2)
+    @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
     @Enumerated(EnumType.STRING)
@@ -55,4 +55,7 @@ public class BookingEntity {
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("seatId ASC")
     private List<BookingSeatEntity> seats = new ArrayList<>();
+
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<BookingComboEntity> combos = new ArrayList<>();
 }

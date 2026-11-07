@@ -1,6 +1,7 @@
 package fu.mss301.booking.presentation.controller;
 
 import fu.mss301.booking.application.booking.*;
+import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.exception.UpstreamServiceException;
@@ -31,6 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class BookingControllerTests {
     private HoldSeatsUseCase holdSeats;
     private InitiatePaymentUseCase initiatePayment;
+    private ReplaceBookingCombosUseCase replaceCombos;
     private HandlePayosWebhookUseCase webhook;
     private RefundAdminUseCase refunds;
     private MockMvc mvc;
@@ -39,11 +41,12 @@ class BookingControllerTests {
     void setUp() {
         holdSeats = mock(HoldSeatsUseCase.class);
         initiatePayment = mock(InitiatePaymentUseCase.class);
+        replaceCombos = mock(ReplaceBookingCombosUseCase.class);
         webhook = mock(HandlePayosWebhookUseCase.class);
         refunds = mock(RefundAdminUseCase.class);
         mvc = MockMvcBuilders.standaloneSetup(
                 new BookingController(mock(SeatMapQuery.class), holdSeats, mock(BookingQueryService.class),
-                    mock(CancelBookingUseCase.class), initiatePayment),
+                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
@@ -54,13 +57,44 @@ class BookingControllerTests {
     void holdReturns201WithLocation() throws Exception {
         when(holdSeats.hold(7, 3L, List.of(101, 102))).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
             BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), LocalDateTime.now(), LocalDateTime.now(),
-            List.of(), null));
+            List.of(), List.of(), null));
         mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", "http://localhost/api/bookings/11"))
             .andExpect(jsonPath("$.status").value(201))
             .andExpect(jsonPath("$.data.status").value("PENDING_PAYMENT"));
+    }
+
+    @Test
+    void replacingCombosPassesTheLinesAndReturnsTheBooking() throws Exception {
+        when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 2)))).thenReturn(new BookingView(11,
+            "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"),
+            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), null));
+        mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":2}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalAmount").value(260000.00))
+            .andExpect(jsonPath("$.data.combos[0].name").value("Bắp nước"))
+            .andExpect(jsonPath("$.data.combos[0].quantity").value(2));
+    }
+
+    @Test
+    void invalidComboBodiesAre400() throws Exception {
+        for (var body : List.of("{}", "{\"combos\":[{\"comboId\":5,\"quantity\":0}]}", "{\"combos\":[{\"quantity\":1}]}")) {
+            mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void comboNotOnSaleIs409() throws Exception {
+        when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 1)))).thenThrow(new ComboUnavailableException(5));
+        mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":1}]}"))
+            .andExpect(status().isConflict());
     }
 
     @Test

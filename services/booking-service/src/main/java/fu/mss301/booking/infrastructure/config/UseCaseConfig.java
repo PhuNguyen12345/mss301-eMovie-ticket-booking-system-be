@@ -5,7 +5,9 @@ import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldPolicy;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
+import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
+import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentSettlementService;
@@ -20,6 +22,7 @@ import fu.mss301.booking.application.port.SeatLayoutProvider;
 import fu.mss301.booking.application.port.ShowtimeCatalog;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.BookingRepository;
+import fu.mss301.booking.domain.combo.ComboRepository;
 import fu.mss301.booking.domain.payment.PaymentRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -95,6 +98,18 @@ public class UseCaseConfig {
     @Bean
     PaymentEventPolicy paymentEventPolicy(PaymentSettlementService settlement) {
         return new PaymentEventPolicy(settlement);
+    }
+
+    @Bean
+    ReplaceBookingCombosUseCase replaceBookingCombosUseCase(BookingRepository bookings, PaymentRepository payments,
+                                                            ComboRepository combos, Transactions transactions,
+                                                            Clock clock) {
+        return new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, clock);
+    }
+
+    @Bean
+    ComboService comboService(ComboRepository combos, Transactions transactions, Clock clock) {
+        return new ComboService(combos, transactions, clock);
     }
 
     @Bean

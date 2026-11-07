@@ -1,6 +1,7 @@
 package fu.mss301.booking;
 
 import fu.mss301.booking.domain.booking.Booking;
+import fu.mss301.booking.domain.combo.Combo;
 import fu.mss301.booking.domain.payment.PaymentTransaction;
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +41,7 @@ class ArchitectureDependencyTests {
 
     @Test
     void aggregatesHaveNoPublicConstructorOrSetters() {
-        for (var aggregate : List.of(Booking.class, PaymentTransaction.class)) {
+        for (var aggregate : List.of(Booking.class, PaymentTransaction.class, Combo.class)) {
             assertEquals(0, aggregate.getConstructors().length, aggregate.getName());
             for (var method : aggregate.getMethods()) {
                 assertFalse(method.getName().startsWith("set"), aggregate.getName() + "." + method.getName());
@@ -53,7 +54,7 @@ class ArchitectureDependencyTests {
         try (var files = Files.walk(source.resolve("domain"))) {
             var repositories = files.map(path -> path.getFileName().toString())
                 .filter(name -> name.endsWith("Repository.java")).collect(Collectors.toSet());
-            assertEquals(Set.of("BookingRepository.java", "PaymentRepository.java"), repositories);
+            assertEquals(Set.of("BookingRepository.java", "PaymentRepository.java", "ComboRepository.java"), repositories);
         }
     }
 

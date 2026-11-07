@@ -2,11 +2,17 @@ package fu.mss301.booking;
 
 import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
+import fu.mss301.booking.application.booking.ComboLine;
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
+import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView.Availability;
+import fu.mss301.booking.application.combo.ComboCommand;
+import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.application.exception.ComboUnavailableException;
+import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
@@ -27,8 +33,10 @@ import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
+import fu.mss301.booking.domain.combo.ComboStatus;
 import fu.mss301.booking.domain.payment.PaymentStatus;
 import fu.mss301.booking.domain.payment.RefundStatus;
+import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -81,6 +89,8 @@ class BookingServiceApplicationTests {
     @Autowired private HandlePayosWebhookUseCase webhook;
     @Autowired private RefundAdminUseCase refunds;
     @Autowired private MutableClock clock;
+    @Autowired private ComboService comboService;
+    @Autowired private ReplaceBookingCombosUseCase replaceCombos;
     @Autowired private BookingRepository repository;
     @Autowired private Transactions transactions;
     @Autowired private DomainEvents domainEvents;
@@ -278,8 +288,164 @@ class BookingServiceApplicationTests {
     }
 
     @Test
+    void comboMenuOnlyShowsWhatIsOnSale() {
+        var combo = comboService.create(new ComboCommand("Bắp nước " + showtimeId, "1 bắp", new BigDecimal("85000")));
+        assertEquals(ComboStatus.ACTIVE, combo.status());
+        assertTrue(comboService.listOnSale().contains(combo));
+
+        var updated = comboService.update(combo.id(), new ComboCommand("Bắp lớn " + showtimeId, null, new BigDecimal("95000")));
+        assertEquals(new BigDecimal("95000.00"), updated.price());
+
+        comboService.deactivate(combo.id());
+        assertTrue(comboService.listOnSale().stream().noneMatch(c -> c.id().equals(combo.id())));
+        assertTrue(comboService.listAll().stream().anyMatch(c -> c.id().equals(combo.id())));
+        assertEquals(ComboStatus.ACTIVE, comboService.activate(combo.id()).status());
+    }
+
+    @Test
+    void combosArePaidTogetherWithSeats() {
+        var combo = comboOnSale("85000");
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        var seatIds = seatRowIds(booking.id());
+
+        var updated = replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 2)));
+        assertEquals(new BigDecimal("260000.00"), updated.totalAmount());
+        assertEquals(0, new BigDecimal("260000").compareTo(storedTotal(booking.id())));
+        assertEquals(seatIds, seatRowIds(booking.id()));
+
+        var payment = initiatePayment.initiate(7, booking.id());
+        assertEquals(new BigDecimal("260000.00"), payment.amount());
+        verify(gateway).createLink(argThat(request -> request.amount() == 260000L));
+
+        when(gateway.verifyWebhook(any())).thenReturn(
+            new VerifiedPayment(payment.orderCode(), 260000, true, "FT6", LocalDateTime.now(clock)));
+        webhook.handle(Map.of());
+
+        var confirmed = queries.getBooking(7, false, booking.id());
+        assertEquals(BookingStatus.CONFIRMED, confirmed.status());
+        assertEquals(1, confirmed.combos().size());
+        assertEquals(2, confirmed.combos().getFirst().quantity());
+        assertEquals(new BigDecimal("85000.00"), confirmed.combos().getFirst().price());
+        assertEquals(seatIds, seatRowIds(booking.id()));
+        assertThrows(InvalidStateTransitionException.class, () -> replaceCombos.replace(7, booking.id(), List.of()));
+    }
+
+    @Test
+    void replacingCombosKeepsMatchingRowsAndDeletesTheRest() {
+        var kept = comboOnSale("85000");
+        var dropped = comboOnSale("40000");
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        replaceCombos.replace(7, booking.id(), List.of(new ComboLine(kept, 1), new ComboLine(dropped, 1)));
+        var keptRow = comboRowId(booking.id(), kept);
+
+        replaceCombos.replace(7, booking.id(), List.of(new ComboLine(kept, 3)));
+        assertEquals(keptRow, comboRowId(booking.id(), kept));
+        assertEquals(1, comboRowCount(booking.id()));
+        assertEquals(0, new BigDecimal("345000").compareTo(storedTotal(booking.id())));
+
+        replaceCombos.replace(7, booking.id(), List.of());
+        assertEquals(0, comboRowCount(booking.id()));
+        assertEquals(0, new BigDecimal("90000").compareTo(storedTotal(booking.id())));
+    }
+
+    @Test
+    void comboPriceIsFixedAtPurchase() {
+        var combo = comboOnSale("85000");
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 1)));
+
+        comboService.update(combo, new ComboCommand("Combo đổi tên " + combo, null, new BigDecimal("99000")));
+
+        var stored = queries.getBooking(7, false, booking.id());
+        assertEquals(new BigDecimal("85000.00"), stored.combos().getFirst().price());
+        assertEquals(new BigDecimal("175000.00"), stored.totalAmount());
+        assertEquals("Combo đổi tên " + combo, stored.combos().getFirst().name());
+    }
+
+    @Test
+    void comboNotOnSaleCannotBeAdded() {
+        var combo = comboOnSale("85000");
+        comboService.deactivate(combo);
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        assertThrows(ComboUnavailableException.class,
+            () -> replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 1))));
+        assertEquals(0, comboRowCount(booking.id()));
+    }
+
+    @Test
+    void combosCannotChangeOnceAPaymentLinkExists() {
+        var combo = comboOnSale("85000");
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        initiatePayment.initiate(7, booking.id());
+        assertThrows(InvalidStateTransitionException.class,
+            () -> replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 1))));
+        assertEquals(0, new BigDecimal("90000").compareTo(storedTotal(booking.id())));
+    }
+
+    @Test
+    void afterAFailedLinkCombosCanChangeAndTheNextAttemptCarriesTheNewAmount() {
+        var combo = comboOnSale("85000");
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        doThrow(new PaymentGatewayException("down", null)).when(gateway).createLink(any());
+        assertThrows(PaymentGatewayException.class, () -> initiatePayment.initiate(7, booking.id()));
+
+        doAnswer(invocation -> {
+            PaymentGateway.LinkRequest request = invocation.getArgument(0);
+            return new CheckoutLink("link-" + request.orderCode(), "https://pay.payos.vn/web/" + request.orderCode());
+        }).when(gateway).createLink(any());
+        replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 1)));
+
+        var payment = initiatePayment.initiate(7, booking.id());
+        assertEquals(new BigDecimal("175000.00"), payment.amount());
+    }
+
+    @Test
+    void changingCombosWhilePayingNeverOpensALinkWithTheWrongAmount() throws Exception {
+        var combo = comboOnSale("85000");
+        for (int round = 0; round < 8; round++) {
+            var booking = holdSeats.hold(7, showtimeId, List.of(101));
+            var barrier = new CyclicBarrier(2);
+            Callable<Object> change = () -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                try {
+                    return replaceCombos.replace(7, booking.id(), List.of(new ComboLine(combo, 1)));
+                } catch (InvalidStateTransitionException exception) {
+                    return null;
+                }
+            };
+            Callable<Object> pay = () -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                return initiatePayment.initiate(7, booking.id());
+            };
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                for (var result : executor.invokeAll(List.of(change, pay))) result.get();
+            }
+            var stored = queries.getBooking(7, false, booking.id());
+            assertEquals(stored.totalAmount(), stored.payment().amount());
+            cancelBooking.cancel(7, booking.id());
+        }
+    }
+
+    @Test
     void publishingEventsOutsideATransactionFailsLoudly() {
         assertThrows(IllegalStateException.class, () -> domainEvents.publish(List.of(new BookingCancelled(1))));
+    }
+
+    private Integer comboOnSale(String price) {
+        return comboService.create(new ComboCommand("Combo " + System.nanoTime(), null, new BigDecimal(price))).id();
+    }
+
+    private BigDecimal storedTotal(Integer bookingId) {
+        return jdbc.queryForObject("select total_amount from bookings where id = ?", BigDecimal.class, bookingId);
+    }
+
+    private Integer comboRowId(Integer bookingId, Integer comboId) {
+        return jdbc.queryForObject("select id from booking_combos where booking_id = ? and combo_id = ?", Integer.class,
+            bookingId, comboId);
+    }
+
+    private int comboRowCount(Integer bookingId) {
+        return jdbc.queryForObject("select count(*) from booking_combos where booking_id = ?", Integer.class, bookingId);
     }
 
     private List<Integer> seatRowIds(Integer bookingId) {

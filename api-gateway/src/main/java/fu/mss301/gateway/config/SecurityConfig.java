@@ -62,6 +62,8 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.POST, "/api/payments/payos/webhook").permitAll()
                 .pathMatchers(HttpMethod.GET, "/api/bookings/showtimes/*/seats").permitAll()
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
+                .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
+                .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
                 .pathMatchers("/api/users/me", "/api/users/me/**", "/api/bookings/**", "/api/payments/**").authenticated()
                 .pathMatchers("/api/users/**").hasRole("ADMIN")
                 .anyExchange().denyAll())

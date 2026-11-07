@@ -1,6 +1,8 @@
 package fu.mss301.booking.presentation.exception;
 
 import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.application.exception.ComboNotFoundException;
+import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.RefundNotFoundException;
@@ -30,12 +32,13 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class BookingExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(BookingExceptionHandler.class);
 
-    @ExceptionHandler({BookingNotFoundException.class, RefundNotFoundException.class})
+    @ExceptionHandler({BookingNotFoundException.class, RefundNotFoundException.class, ComboNotFoundException.class})
     ResponseEntity<ApiResponse<String>> notFound(RuntimeException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
-    @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class})
+    @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class,
+        ComboUnavailableException.class})
     ResponseEntity<ApiResponse<String>> conflict(RuntimeException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }

@@ -17,11 +17,18 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | GET | `/api/bookings/me?page=0&size=10` | Đăng nhập | Lịch sử booking của tôi (mới nhất trước) | 200 |
 | GET | `/api/bookings/{id}` | Chủ booking / ADMIN | Chi tiết booking + lần thanh toán gần nhất | 200 |
 | POST | `/api/bookings/{id}/cancel` | Chủ booking | Hủy booking đang chờ thanh toán, nhả ghế | 200 |
+| PUT | `/api/bookings/{id}/combos` | Chủ booking | Thay toàn bộ combo của booking, tính lại tổng tiền | 200 |
 | POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
 | GET | `/api/payments/refunds?status=PENDING` | ADMIN | Danh sách yêu cầu hoàn tiền | 200 |
 | POST | `/api/payments/refunds/{id}/complete` | ADMIN | Đánh dấu đã hoàn tiền thủ công | 200 |
+| GET | `/api/combos` | Public | Combo đang bán | 200 |
+| GET | `/api/combos/all` | ADMIN | Mọi combo, gồm cả combo đã ngừng bán | 200 |
+| POST | `/api/combos` | ADMIN | Tạo combo | 201 + `Location` |
+| PUT | `/api/combos/{id}` | ADMIN | Sửa tên, mô tả, giá | 200 |
+| POST | `/api/combos/{id}/activate` | ADMIN | Mở bán lại | 200 |
+| POST | `/api/combos/{id}/deactivate` | ADMIN | Ngừng bán | 200 |
 
 ### Mã lỗi chung
 
@@ -95,6 +102,7 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
       {"seatId": 101, "price": 90000.00, "status": "HELD"},
       {"seatId": 102, "price": 150000.00, "status": "HELD"}
     ],
+    "combos": [],
     "payment": null
   }
 }
@@ -154,6 +162,52 @@ Bảng `refunds` chỉ dùng cho **lỗi phía hệ thống**, khi tiền đã v
 - Một booking được thanh toán thành công 2 lần.
 
 Hệ thống tự tạo `refunds` trạng thái `PENDING`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
+
+### 2.7 Combo
+
+**Quản lý combo (ADMIN).** Body của `POST /api/combos` và `PUT /api/combos/{id}`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `name` | string | bắt buộc, tối đa 100 ký tự |
+| `description` | string | tùy chọn, tối đa 255 ký tự |
+| `price` | number | bắt buộc, 1..99.999.999, là số VND nguyên vì PayOS không nhận số lẻ |
+
+```json
+{"id": 5, "name": "Bắp nước", "description": "1 bắp, 1 nước", "price": 85000.00, "status": "ACTIVE"}
+```
+
+Combo mới có trạng thái `ACTIVE`. Ngừng bán chỉ chặn việc thêm mới, không ảnh hưởng booking đã có combo đó.
+
+**Thêm combo vào booking.** `PUT /api/bookings/{id}/combos` thay **toàn bộ** danh sách. Gửi list rỗng để bỏ hết combo.
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `combos` | array | bắt buộc, tối đa 20 phần tử, không trùng combo |
+| `combos[].comboId` | number | bắt buộc, combo phải đang bán |
+| `combos[].quantity` | number | bắt buộc, 1..20 |
+
+```bash
+curl -X PUT http://localhost:8080/api/bookings/42/combos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"combos": [{"comboId": 5, "quantity": 2}]}'
+```
+
+Trả về booking với `totalAmount` = tiền ghế + tiền combo, và danh sách combo. `price` là đơn giá lúc mua:
+
+```json
+{"combos": [{"comboId": 5, "name": "Bắp nước", "quantity": 2, "price": 85000.00}]}
+```
+
+Đổi giá combo sau đó không ảnh hưởng booking đã thêm. Còn `name` lấy theo tên hiện tại của combo.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Trùng combo, `quantity` ngoài 1..20, tổng tiền vượt giới hạn |
+| 404 | Booking hoặc combo không tồn tại, booking không thuộc về bạn |
+| 409 | Combo đã ngừng bán; booking không còn `PENDING_PAYMENT` hoặc đã hết giờ giữ ghế; **đã có payment `PENDING`** |
+
+**FE cần thêm combo trước khi tạo link thanh toán.** Link PayOS mang số tiền cố định, nên sau `POST /api/bookings/{id}/payments` không sửa combo được nữa. Nếu tạo link thất bại, payment chuyển `FAILED` và có thể sửa combo rồi thanh toán lại.
 
 ## 3. State machine
 
@@ -324,7 +378,7 @@ Booking gọi qua OpenFeign (`infrastructure/client`). Cả 3 endpoint dưới �
 ## 8. Schema `booking_db` và điểm khác ERD
 
 Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transactions`, `refunds`, `combos`, `booking_combos`, `vouchers`, `user_vouchers`
-(combo/voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
+(voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
 
 | Bảng.cột | Lý do |
 | --- | --- |
