@@ -8,6 +8,9 @@ import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.combo.ComboService;
+import fu.mss301.booking.application.voucher.VoucherService;
+import fu.mss301.booking.application.port.VoucherQueries;
+import fu.mss301.booking.domain.voucher.VoucherRepository;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentSettlementService;
@@ -107,6 +110,12 @@ public class UseCaseConfig {
                                                             ComboRepository combos, Transactions transactions,
                                                             Clock clock) {
         return new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, clock);
+    }
+
+    @Bean
+    VoucherService voucherService(VoucherRepository vouchers, VoucherQueries queries, ComboRepository combos,
+                                  CinemaCatalog cinemas, Transactions transactions, Clock clock) {
+        return new VoucherService(vouchers, queries, combos, cinemas, transactions, clock);
     }
 
     @Bean
