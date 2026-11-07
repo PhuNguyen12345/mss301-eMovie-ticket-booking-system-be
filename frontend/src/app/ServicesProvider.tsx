@@ -23,6 +23,7 @@ import { createMovieApi } from "../features/movies/api";
 import { createBookingApi } from "../features/booking/api";
 import { createCinemaApi } from "../features/cinema/api";
 import { createComboApi } from "../features/combos/api";
+import { createMovieManagementApi } from "../features/movie-management/api";
 
 function createServices() {
   const session = createSessionStore();
@@ -43,6 +44,7 @@ function createServices() {
     booking: createBookingApi(client),
     cinema: createCinemaApi(client),
     combos: createComboApi(client),
+    movieManagement: createMovieManagementApi(client),
     showtimes:
       mode === "api" ? createHttpShowtimes(client) : createDemoShowtimes(),
   };

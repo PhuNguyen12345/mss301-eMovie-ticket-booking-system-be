@@ -115,6 +115,30 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "movies/:movieId",
+            lazy: async () => ({
+              Component: (
+                await import("../features/movie-management/MovieAssetsPage")
+              ).MovieAssetsPage,
+            }),
+          },
+          {
+            path: "genres",
+            lazy: async () => ({
+              Component: (
+                await import("../features/movie-management/ReferenceAdminPage")
+              ).GenresPage,
+            }),
+          },
+          {
+            path: "persons",
+            lazy: async () => ({
+              Component: (
+                await import("../features/movie-management/ReferenceAdminPage")
+              ).PersonsPage,
+            }),
+          },
+          {
             path: "cinema",
             lazy: async () => ({
               Component: (await import("../features/cinema/CinemaAdminPage"))

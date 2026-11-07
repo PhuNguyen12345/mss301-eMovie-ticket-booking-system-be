@@ -62,6 +62,33 @@ export function MoviePage() {
               <p className="movie-description">
                 {movie.data.description || "Nội dung phim đang được cập nhật."}
               </p>
+              {!!movie.data.credits?.length && (
+                <dl className="movie-credits">
+                  {["DIRECTOR", "ACTOR"].map((role) => {
+                    const people = movie.data
+                      .credits!.filter((person) => person.creditType === role)
+                      .sort((a, b) => a.displayOrder - b.displayOrder);
+                    return people.length ? (
+                      <div key={role}>
+                        <dt>
+                          {role === "DIRECTOR" ? "Đạo diễn" : "Diễn viên"}
+                        </dt>
+                        <dd>
+                          {people
+                            .map(
+                              (person) =>
+                                person.fullName +
+                                (person.characterName
+                                  ? ` (${person.characterName})`
+                                  : ""),
+                            )
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null;
+                  })}
+                </dl>
+              )}
               {safeWebUrl(movie.data.trailerUrl) && (
                 <a
                   className="button"

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { MovieAdminNav } from "../movie-management/MovieAdminNav";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServices } from "../../app/ServicesProvider";
 import { useMovieCatalogue, movieKeys } from "../movies/hooks";
@@ -26,6 +28,7 @@ export function AdminMoviesPage() {
   const [edit, setEdit] = useState<Movie | "create" | null>(null);
   return (
     <main className="page">
+      <MovieAdminNav />
       <div className="page-heading">
         <div>
           <h1>Quản lý phim</h1>
@@ -101,12 +104,17 @@ export function AdminMoviesPage() {
                         : "Ngừng chiếu"}
                   </span>
                 </div>
-                <Button
-                  disabled={showtimes.mode !== "api"}
-                  onClick={() => setEdit(movie)}
-                >
-                  Chỉnh sửa
-                </Button>
+                <div className="record-actions">
+                  <Button
+                    disabled={showtimes.mode !== "api"}
+                    onClick={() => setEdit(movie)}
+                  >
+                    Chỉnh sửa
+                  </Button>
+                  <Link className="button" to={`/admin/movies/${movie.id}`}>
+                    Thể loại, ê-kíp & poster
+                  </Link>
+                </div>
               </article>
             ))}
           </div>
