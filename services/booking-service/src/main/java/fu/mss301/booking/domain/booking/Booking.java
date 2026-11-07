@@ -3,13 +3,9 @@ package fu.mss301.booking.domain.booking;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
+import fu.mss301.booking.domain.shared.DomainEvent;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
-import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.springframework.data.domain.AbstractAggregateRoot;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -25,51 +21,37 @@ import java.util.List;
  * State machine: {@code PENDING_PAYMENT -> CONFIRMED | CANCELLED | EXPIRED}. Seats are HELD while the
  * booking waits for payment, BOOKED once confirmed and RELEASED when it is cancelled or expires.
  */
-@Entity
-@Table(name = "bookings")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Booking extends AbstractAggregateRoot<Booking> {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
-
-    @Column(name = "user_id", nullable = false, updatable = false)
-    private Integer userId;
-
-    @Column(name = "showtime_id", nullable = false, updatable = false)
-    private Long showtimeId;
-
-    @Embedded
-    private BookingCode bookingCode;
-
-    @Column(name = "booking_time", nullable = false, updatable = false)
-    private LocalDateTime bookingTime;
-
-    @Column(name = "total_amount", nullable = false, updatable = false, precision = 10, scale = 2)
-    private BigDecimal totalAmount;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+public final class Booking {
+    private final Integer id;
+    private final Integer userId;
+    private final Long showtimeId;
+    private final BookingCode bookingCode;
+    private final LocalDateTime bookingTime;
+    private final BigDecimal totalAmount;
     private BookingStatus status;
-
-    @Column(name = "expired_at", nullable = false, updatable = false)
-    private LocalDateTime expiredAt;
-
-    @Version
-    @Getter(AccessLevel.NONE)
-    private Integer version;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
+    private final LocalDateTime expiredAt;
+    private final Integer version;
+    private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private final List<BookingSeat> seats;
+    private final List<DomainEvent> events = new ArrayList<>();
 
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("seatId ASC")
-    @Getter(AccessLevel.NONE)
-    private List<BookingSeat> seats = new ArrayList<>();
+    private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, LocalDateTime bookingTime,
+                    BigDecimal totalAmount, BookingStatus status, LocalDateTime expiredAt, Integer version,
+                    LocalDateTime createdAt, LocalDateTime updatedAt, List<BookingSeat> seats) {
+        this.id = id;
+        this.userId = userId;
+        this.showtimeId = showtimeId;
+        this.bookingCode = bookingCode;
+        this.bookingTime = bookingTime;
+        this.totalAmount = totalAmount;
+        this.status = status;
+        this.expiredAt = expiredAt;
+        this.version = version;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.seats = new ArrayList<>(seats);
+    }
 
     public static Booking hold(Integer userId, Long showtimeId, List<SeatSelection> selections, int maxSeats,
                                LocalDateTime now, Duration holdTtl) {
@@ -83,19 +65,20 @@ public class Booking extends AbstractAggregateRoot<Booking> {
             if (!seen.add(selection.seatId())) throw new DomainException("Seat " + selection.seatId() + " is selected twice");
         }
 
-        Booking booking = new Booking();
-        booking.userId = userId;
-        booking.showtimeId = showtimeId;
-        booking.bookingCode = BookingCode.generate(now);
-        booking.bookingTime = now;
-        booking.status = BookingStatus.PENDING_PAYMENT;
-        booking.expiredAt = now.plus(holdTtl);
-        booking.createdAt = now;
-        booking.updatedAt = now;
-        selections.forEach(selection -> booking.seats.add(BookingSeat.hold(booking, showtimeId, selection, now)));
-        booking.totalAmount = selections.stream().map(SeatSelection::price)
+        var seats = selections.stream().map(selection -> BookingSeat.hold(showtimeId, selection, now)).toList();
+        BigDecimal total = selections.stream().map(SeatSelection::price)
             .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
-        return booking;
+        return new Booking(null, userId, showtimeId, BookingCode.generate(now), now, total,
+            BookingStatus.PENDING_PAYMENT, now.plus(holdTtl), null, now, now, seats);
+    }
+
+    /** Rebuilds a stored booking; performs no business validation because old bookings must always load. */
+    public static Booking restore(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode,
+                                  LocalDateTime bookingTime, BigDecimal totalAmount, BookingStatus status,
+                                  LocalDateTime expiredAt, Integer version, LocalDateTime createdAt,
+                                  LocalDateTime updatedAt, List<BookingSeat> seats) {
+        return new Booking(id, userId, showtimeId, bookingCode, bookingTime, totalAmount, status, expiredAt, version,
+            createdAt, updatedAt, seats);
     }
 
     /** Payment succeeded: the held seats become booked. Allowed until the hold is actually released. */
@@ -104,7 +87,7 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         status = BookingStatus.CONFIRMED;
         seats.forEach(seat -> seat.book(now));
         updatedAt = now;
-        registerEvent(new BookingConfirmed(id));
+        events.add(new BookingConfirmed(id));
     }
 
     public void cancelBy(Integer requesterId, LocalDateTime now) {
@@ -112,7 +95,7 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         requirePending("cancel");
         status = BookingStatus.CANCELLED;
         releaseSeats(now);
-        registerEvent(new BookingCancelled(id));
+        events.add(new BookingCancelled(id));
     }
 
     public void expire(LocalDateTime now) {
@@ -120,7 +103,7 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         if (now.isBefore(expiredAt)) throw new InvalidStateTransitionException("Booking hold has not expired yet");
         status = BookingStatus.EXPIRED;
         releaseSeats(now);
-        registerEvent(new BookingExpired(id));
+        events.add(new BookingExpired(id));
     }
 
     /** A new payment may only be started while the seat hold is still valid. */
@@ -132,9 +115,27 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         return userId.equals(requesterId);
     }
 
-    public List<BookingSeat> getSeats() {
-        return Collections.unmodifiableList(seats);
+    /** Returns the events raised since the last call and forgets them, so each is published once. */
+    public List<DomainEvent> pullEvents() {
+        var pulled = List.copyOf(events);
+        events.clear();
+        return pulled;
     }
+
+    public Integer id() { return id; }
+    public Integer userId() { return userId; }
+    public Long showtimeId() { return showtimeId; }
+    public BookingCode bookingCode() { return bookingCode; }
+    public LocalDateTime bookingTime() { return bookingTime; }
+    public BigDecimal totalAmount() { return totalAmount; }
+    public BookingStatus status() { return status; }
+    public LocalDateTime expiredAt() { return expiredAt; }
+    public LocalDateTime createdAt() { return createdAt; }
+    public LocalDateTime updatedAt() { return updatedAt; }
+    public List<BookingSeat> seats() { return Collections.unmodifiableList(seats); }
+
+    /** Optimistic-lock token owned by persistence; the domain never interprets it. */
+    public Integer version() { return version; }
 
     private void releaseSeats(LocalDateTime now) {
         seats.forEach(seat -> seat.release(now));

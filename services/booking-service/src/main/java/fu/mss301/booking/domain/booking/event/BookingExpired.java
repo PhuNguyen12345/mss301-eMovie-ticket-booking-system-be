@@ -1,3 +1,5 @@
 package fu.mss301.booking.domain.booking.event;
 
-public record BookingExpired(Integer bookingId) {}
+import fu.mss301.booking.domain.shared.DomainEvent;
+
+public record BookingExpired(Integer bookingId) implements DomainEvent {}

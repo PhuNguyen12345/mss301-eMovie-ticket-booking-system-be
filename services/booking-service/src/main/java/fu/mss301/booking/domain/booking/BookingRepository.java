@@ -1,8 +1,5 @@
 package fu.mss301.booking.domain.booking;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -17,9 +14,5 @@ public interface BookingRepository {
     /** Loads the aggregate with a row lock so concurrent confirm/expire/cancel are serialized. */
     Optional<Booking> findByIdForUpdate(Integer id);
 
-    Page<Booking> findByUserId(Integer userId, Pageable pageable);
-
     List<Integer> findOverdueIds(LocalDateTime now, int limit);
-
-    List<OccupiedSeat> findOccupiedSeats(Long showtimeId);
 }

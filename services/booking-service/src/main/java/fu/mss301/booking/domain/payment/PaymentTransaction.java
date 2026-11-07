@@ -1,13 +1,9 @@
 package fu.mss301.booking.domain.payment;
 
 import fu.mss301.booking.domain.payment.event.PaymentSucceeded;
+import fu.mss301.booking.domain.shared.DomainEvent;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
-import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.springframework.data.domain.AbstractAggregateRoot;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -22,78 +18,63 @@ import java.util.List;
  * link was closed) and {@code SUCCESS -> REFUNDED}. It references its booking by id only: the booking is a
  * different aggregate and is updated through the {@link PaymentSucceeded} event.
  */
-@Entity
-@Table(name = "payment_transactions")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class PaymentTransaction extends AbstractAggregateRoot<PaymentTransaction> {
+public final class PaymentTransaction {
     public static final String PROVIDER_PAYOS = "PAYOS";
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
-
-    @Column(name = "booking_id", nullable = false, updatable = false)
-    private Integer bookingId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method", nullable = false, updatable = false, length = 20)
-    private PaymentMethod paymentMethod;
-
-    @Column(name = "provider", nullable = false, updatable = false, length = 50)
-    private String provider;
-
-    @Column(name = "order_code", nullable = false, updatable = false)
-    private Long orderCode;
-
-    @Column(name = "payment_link_id")
+    private final Integer id;
+    private final Integer bookingId;
+    private final PaymentMethod paymentMethod;
+    private final String provider;
+    private final Long orderCode;
     private String paymentLinkId;
-
-    @Column(name = "provider_transaction_id")
     private String providerTransactionId;
-
-    @Column(name = "checkout_url", length = 500)
     private String checkoutUrl;
-
-    @Column(name = "amount", nullable = false, updatable = false, precision = 10, scale = 2)
-    private BigDecimal amount;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    private final BigDecimal amount;
     private PaymentStatus status;
-
-    @Column(name = "paid_at")
     private LocalDateTime paidAt;
-
-    @Version
-    @Getter(AccessLevel.NONE)
-    private Integer version;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
+    private final Integer version;
+    private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private final List<Refund> refunds;
+    private final List<DomainEvent> events = new ArrayList<>();
 
-    @OneToMany(mappedBy = "payment", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("id ASC")
-    @Getter(AccessLevel.NONE)
-    private List<Refund> refunds = new ArrayList<>();
+    private PaymentTransaction(Integer id, Integer bookingId, PaymentMethod paymentMethod, String provider,
+                               Long orderCode, String paymentLinkId, String providerTransactionId, String checkoutUrl,
+                               BigDecimal amount, PaymentStatus status, LocalDateTime paidAt, Integer version,
+                               LocalDateTime createdAt, LocalDateTime updatedAt, List<Refund> refunds) {
+        this.id = id;
+        this.bookingId = bookingId;
+        this.paymentMethod = paymentMethod;
+        this.provider = provider;
+        this.orderCode = orderCode;
+        this.paymentLinkId = paymentLinkId;
+        this.providerTransactionId = providerTransactionId;
+        this.checkoutUrl = checkoutUrl;
+        this.amount = amount;
+        this.status = status;
+        this.paidAt = paidAt;
+        this.version = version;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.refunds = new ArrayList<>(refunds);
+    }
 
     public static PaymentTransaction initiate(Integer bookingId, BigDecimal amount, Long orderCode, LocalDateTime now) {
         if (bookingId == null || bookingId <= 0) throw new DomainException("Booking id must be positive");
         if (amount == null || amount.signum() <= 0) throw new DomainException("Payment amount must be positive");
         if (orderCode == null || orderCode <= 0) throw new DomainException("Order code must be positive");
-        PaymentTransaction payment = new PaymentTransaction();
-        payment.bookingId = bookingId;
-        payment.paymentMethod = PaymentMethod.BANK_TRANSFER;
-        payment.provider = PROVIDER_PAYOS;
-        payment.orderCode = orderCode;
-        payment.amount = amount;
-        payment.status = PaymentStatus.PENDING;
-        payment.createdAt = now;
-        payment.updatedAt = now;
-        return payment;
+        return new PaymentTransaction(null, bookingId, PaymentMethod.BANK_TRANSFER, PROVIDER_PAYOS, orderCode, null,
+            null, null, amount, PaymentStatus.PENDING, null, null, now, now, List.of());
+    }
+
+    /** Rebuilds a stored payment; performs no business validation. */
+    public static PaymentTransaction restore(Integer id, Integer bookingId, PaymentMethod paymentMethod,
+                                             String provider, Long orderCode, String paymentLinkId,
+                                             String providerTransactionId, String checkoutUrl, BigDecimal amount,
+                                             PaymentStatus status, LocalDateTime paidAt, Integer version,
+                                             LocalDateTime createdAt, LocalDateTime updatedAt, List<Refund> refunds) {
+        return new PaymentTransaction(id, bookingId, paymentMethod, provider, orderCode, paymentLinkId,
+            providerTransactionId, checkoutUrl, amount, status, paidAt, version, createdAt, updatedAt, refunds);
     }
 
     public void attachCheckout(String paymentLinkId, String checkoutUrl, LocalDateTime now) {
@@ -119,7 +100,7 @@ public class PaymentTransaction extends AbstractAggregateRoot<PaymentTransaction
         this.providerTransactionId = reference;
         this.paidAt = paidAt;
         this.updatedAt = now;
-        registerEvent(new PaymentSucceeded(id, bookingId));
+        events.add(new PaymentSucceeded(id, bookingId));
         return true;
     }
 
@@ -137,14 +118,14 @@ public class PaymentTransaction extends AbstractAggregateRoot<PaymentTransaction
             throw new InvalidStateTransitionException("Only a successful payment can be refunded");
         }
         if (refunds.stream().anyMatch(Refund::isOpenOrDone)) return false;
-        refunds.add(Refund.request(this, amount, reason, now));
+        refunds.add(Refund.request(amount, reason, now));
         this.updatedAt = now;
         return true;
     }
 
     /** Refunds are paid out manually (PayOS has no refund API); an admin confirms it here. */
     public void completeRefund(Integer refundId, LocalDateTime now) {
-        Refund refund = refunds.stream().filter(r -> r.getId().equals(refundId)).findFirst()
+        Refund refund = refunds.stream().filter(r -> refundId.equals(r.id())).findFirst()
             .orElseThrow(() -> new DomainException("Refund " + refundId + " does not belong to this payment"));
         refund.complete(now);
         this.status = PaymentStatus.REFUNDED;
@@ -155,7 +136,28 @@ public class PaymentTransaction extends AbstractAggregateRoot<PaymentTransaction
         return status == PaymentStatus.PENDING;
     }
 
-    public List<Refund> getRefunds() {
-        return Collections.unmodifiableList(refunds);
+    /** Returns the events raised since the last call and forgets them, so each is published once. */
+    public List<DomainEvent> pullEvents() {
+        var pulled = List.copyOf(events);
+        events.clear();
+        return pulled;
     }
+
+    public Integer id() { return id; }
+    public Integer bookingId() { return bookingId; }
+    public PaymentMethod paymentMethod() { return paymentMethod; }
+    public String provider() { return provider; }
+    public Long orderCode() { return orderCode; }
+    public String paymentLinkId() { return paymentLinkId; }
+    public String providerTransactionId() { return providerTransactionId; }
+    public String checkoutUrl() { return checkoutUrl; }
+    public BigDecimal amount() { return amount; }
+    public PaymentStatus status() { return status; }
+    public LocalDateTime paidAt() { return paidAt; }
+    public LocalDateTime createdAt() { return createdAt; }
+    public LocalDateTime updatedAt() { return updatedAt; }
+    public List<Refund> refunds() { return Collections.unmodifiableList(refunds); }
+
+    /** Optimistic-lock token owned by persistence; the domain never interprets it. */
+    public Integer version() { return version; }
 }
