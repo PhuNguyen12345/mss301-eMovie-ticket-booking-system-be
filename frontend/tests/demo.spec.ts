@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-11-05T08:00:00+07:00"));
-  await page.goto("/");
+  await page.goto("/admin/showtimes");
 });
 
 test("filters select the correct movie and show an empty result", async ({
@@ -138,4 +138,44 @@ test("unsaved prices are protected when switching showtimes", async ({
   await expect(page.getByLabel("Giá VIP", { exact: true })).toHaveValue(
     "125000",
   );
+});
+
+test("editing an existing showtime updates it without creating another", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", { name: "Sửa suất chiếu", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Giờ bắt đầu")).toHaveValue("18:00");
+  await dialog.getByLabel("Giờ bắt đầu").fill("14:00");
+  await dialog.getByRole("button", { name: "Lưu suất chiếu" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator(".show-row")).toHaveCount(5);
+  await expect(page.locator(".panel-show-info")).toContainText("14:00");
+});
+
+test("leaving the admin page protects unsaved prices", async ({ page }) => {
+  await page.getByLabel("Giá VIP", { exact: true }).fill("155000");
+  const dismissed = page
+    .waitForEvent("dialog")
+    .then((dialog) => dialog.dismiss());
+  await page
+    .getByRole("navigation", { name: "Điều hướng chính" })
+    .getByRole("link", { name: "Phim", exact: true })
+    .click();
+  await dismissed;
+  await expect(page).toHaveURL(/admin\/showtimes/);
+  await expect(page.getByLabel("Giá VIP", { exact: true })).toHaveValue(
+    "155000",
+  );
+  const accepted = page
+    .waitForEvent("dialog")
+    .then((dialog) => dialog.accept());
+  await page
+    .getByRole("navigation", { name: "Điều hướng chính" })
+    .getByRole("link", { name: "Phim", exact: true })
+    .click();
+  await accepted;
+  await expect(page.locator(".movie-card")).toHaveCount(4);
 });

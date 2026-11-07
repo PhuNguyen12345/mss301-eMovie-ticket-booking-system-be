@@ -85,7 +85,8 @@ async function mockApi(page: Page) {
       return send(null, 404);
     },
   );
-  await page.goto("/");
+  await page.goto("/admin/showtimes");
+  await login(page);
   await expect(
     page.getByLabel("Giá loại ghế #2", { exact: true }),
   ).toBeVisible();
@@ -95,7 +96,10 @@ async function mockApi(page: Page) {
   return state;
 }
 async function login(page: Page) {
-  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  await page
+    .locator(".topbar")
+    .getByRole("button", { name: "Đăng nhập", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Email").fill("admin@example.com");
   await dialog.getByLabel("Mật khẩu").fill("demo-password");
@@ -115,7 +119,7 @@ test("HTTP mode follows catalogue pagination and sends server-side filters", asy
     .toBe(true);
   await expect(
     page.getByRole("button", { name: "Tạo suất chiếu", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(page.getByText("Dữ liệu demo")).not.toBeVisible();
 });
 
@@ -123,7 +127,6 @@ test("failed writes preserve the draft; successful writes update cache and inval
   page,
 }) => {
   const state = await mockApi(page);
-  await login(page);
   await page.getByLabel("Giá loại ghế #2", { exact: true }).fill("155000");
   state.putStatus = 503;
   await page.getByRole("button", { name: "Lưu bảng giá", exact: true }).click();
@@ -153,19 +156,15 @@ test("failed writes preserve the draft; successful writes update cache and inval
 
 test("401 clears the session without replaying the write", async ({ page }) => {
   const state = await mockApi(page);
-  await login(page);
   await page.getByLabel("Giá loại ghế #2", { exact: true }).fill("155000");
   state.putStatus = 401;
   await page.getByRole("button", { name: "Lưu bảng giá", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Phiên đăng nhập đã hết hạn",
-  );
   await expect(
-    page.getByRole("button", { name: "Đăng nhập", exact: true }),
+    page.getByRole("heading", { name: "Đăng nhập để tiếp tục" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Lưu bảng giá", exact: true }),
-  ).toBeDisabled();
+  ).not.toBeVisible();
   expect(state.putCalls).toBe(1);
 });
 
