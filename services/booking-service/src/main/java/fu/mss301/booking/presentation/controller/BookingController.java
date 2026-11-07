@@ -4,11 +4,13 @@ import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.BookingView;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
+import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentView;
 import fu.mss301.booking.presentation.dto.HoldSeatsRequest;
+import fu.mss301.booking.presentation.dto.ReplaceCombosRequest;
 import fu.mss301.booking.presentation.security.AuthenticatedUser;
 import fu.mss301.booking.presentation.security.CurrentUser;
 import fu.mss301.common.dto.ApiResponse;
@@ -26,14 +28,17 @@ public class BookingController {
     private final BookingQueryService queries;
     private final CancelBookingUseCase cancelBooking;
     private final InitiatePaymentUseCase initiatePayment;
+    private final ReplaceBookingCombosUseCase replaceCombos;
 
     public BookingController(SeatMapQuery seatMap, HoldSeatsUseCase holdSeats, BookingQueryService queries,
-                             CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment) {
+                             CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment,
+                             ReplaceBookingCombosUseCase replaceCombos) {
         this.seatMap = seatMap;
         this.holdSeats = holdSeats;
         this.queries = queries;
         this.cancelBooking = cancelBooking;
         this.initiatePayment = initiatePayment;
+        this.replaceCombos = replaceCombos;
     }
 
     @GetMapping("/showtimes/{showtimeId}/seats")
@@ -66,6 +71,12 @@ public class BookingController {
     @PostMapping("/{id}/cancel")
     public ApiResponse<BookingView> cancel(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id) {
         return ApiResponse.success(cancelBooking.cancel(user.id(), id), "Booking cancelled successfully");
+    }
+
+    @PutMapping("/{id}/combos")
+    public ApiResponse<BookingView> replaceCombos(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id,
+                                                  @Valid @RequestBody ReplaceCombosRequest request) {
+        return ApiResponse.success(replaceCombos.replace(user.id(), id, request.toLines()), "Booking combos updated successfully");
     }
 
     @PostMapping("/{id}/payments")

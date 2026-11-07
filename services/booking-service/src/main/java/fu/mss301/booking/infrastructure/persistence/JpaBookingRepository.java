@@ -20,9 +20,11 @@ import java.util.Optional;
 @Transactional(propagation = Propagation.MANDATORY)
 class JpaBookingRepository implements BookingRepository {
     private final BookingJpaRepository jpa;
+    private final ComboJpaRepository combos;
 
-    JpaBookingRepository(BookingJpaRepository jpa) {
+    JpaBookingRepository(BookingJpaRepository jpa, ComboJpaRepository combos) {
         this.jpa = jpa;
+        this.combos = combos;
     }
 
     @Override
@@ -35,7 +37,7 @@ class JpaBookingRepository implements BookingRepository {
             if (!Objects.equals(entity.getVersion(), booking.version())) {
                 throw new ObjectOptimisticLockingFailureException(BookingEntity.class, booking.id());
             }
-            BookingMapper.update(booking, entity);
+            BookingMapper.update(booking, entity, combos::getReferenceById);
         }
         try {
             return BookingMapper.toDomain(jpa.saveAndFlush(entity));

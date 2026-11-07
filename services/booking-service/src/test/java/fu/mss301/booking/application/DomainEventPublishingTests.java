@@ -97,7 +97,7 @@ class DomainEventPublishingTests {
         var held = Booking.hold(7, 3L, List.of(new SeatSelection(1, null, new BigDecimal("90000"))), 8,
             NOW.minusMinutes(10), Duration.ofMinutes(5));
         return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.bookingTime(),
-            held.totalAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats());
+            held.totalAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(), held.combos());
     }
 
     private static PaymentTransaction pendingPayment() {

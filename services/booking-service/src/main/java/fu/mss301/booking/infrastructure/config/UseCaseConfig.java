@@ -5,6 +5,7 @@ import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldPolicy;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
+import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
@@ -97,6 +98,13 @@ public class UseCaseConfig {
     @Bean
     PaymentEventPolicy paymentEventPolicy(PaymentSettlementService settlement) {
         return new PaymentEventPolicy(settlement);
+    }
+
+    @Bean
+    ReplaceBookingCombosUseCase replaceBookingCombosUseCase(BookingRepository bookings, PaymentRepository payments,
+                                                            ComboRepository combos, Transactions transactions,
+                                                            Clock clock) {
+        return new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, clock);
     }
 
     @Bean

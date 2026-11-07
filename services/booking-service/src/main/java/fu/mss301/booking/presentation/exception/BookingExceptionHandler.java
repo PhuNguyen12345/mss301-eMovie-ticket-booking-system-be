@@ -2,6 +2,7 @@ package fu.mss301.booking.presentation.exception;
 
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboNotFoundException;
+import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.RefundNotFoundException;
@@ -36,7 +37,8 @@ public class BookingExceptionHandler {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
-    @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class})
+    @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class,
+        ComboUnavailableException.class})
     ResponseEntity<ApiResponse<String>> conflict(RuntimeException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }

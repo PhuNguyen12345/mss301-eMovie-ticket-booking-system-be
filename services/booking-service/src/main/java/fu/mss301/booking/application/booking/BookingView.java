@@ -20,15 +20,19 @@ public record BookingView(
     LocalDateTime bookingTime,
     LocalDateTime expiredAt,
     List<SeatLine> seats,
+    List<ComboItem> combos,
     PaymentView payment
 ) {
     public record SeatLine(Integer seatId, BigDecimal price, SeatHoldStatus status) {}
+
+    public record ComboItem(Integer comboId, String name, Integer quantity, BigDecimal price) {}
 
     public static BookingView of(Booking booking, PaymentTransaction latestPayment) {
         return new BookingView(booking.id(), booking.bookingCode().value(), booking.userId(),
             booking.showtimeId(), booking.status(), booking.totalAmount(), booking.bookingTime(),
             booking.expiredAt(),
             booking.seats().stream().map(s -> new SeatLine(s.seatId(), s.price(), s.status())).toList(),
+            booking.combos().stream().map(c -> new ComboItem(c.comboId(), c.name(), c.quantity(), c.price())).toList(),
             latestPayment == null ? null : PaymentView.of(latestPayment));
     }
 }
