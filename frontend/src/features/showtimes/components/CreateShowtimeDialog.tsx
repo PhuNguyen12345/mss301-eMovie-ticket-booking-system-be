@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useServices } from "../../../app/ServicesProvider";
+import { VenueFields } from "../../cinema/VenueFields";
 import { Button } from "../../../components/ui/Button";
 import { Dialog } from "../../../components/ui/Dialog";
 import { ErrorMessage } from "../../../components/ui/Feedback";
@@ -25,6 +27,19 @@ export function CreateShowtimeDialog({
   show?: Showtime;
 }) {
   const create = useCreateShowtime();
+  const { showtimes } = useServices();
+  const [venue, setVenue] = useState<{ cinemaId?: number; screenId?: number }>(
+    () => ({
+      cinemaId:
+        show?.cinemaId ??
+        filters.cinemaId ??
+        (showtimes.mode === "demo" ? 1 : undefined),
+      screenId:
+        show?.screenId ??
+        filters.screenId ??
+        (showtimes.mode === "demo" ? 1 : undefined),
+    }),
+  );
   const update = useUpdateShowtime(show?.id);
   const mutation = show ? update : create;
   const [error, setError] = useState<unknown>(null);
@@ -42,8 +57,8 @@ export function CreateShowtimeDialog({
       created(
         await mutation.mutateAsync({
           movieId: Number(data.get("movie")),
-          cinemaId: Number(data.get("cinema")),
-          screenId: Number(data.get("screen")),
+          cinemaId: venue.cinemaId!,
+          screenId: venue.screenId!,
           startTime,
           basePrice,
         }),
@@ -99,26 +114,7 @@ export function CreateShowtimeDialog({
                 required
               />
             </Field>
-            <Field label="Mã rạp">
-              <input
-                name="cinema"
-                type="number"
-                min="1"
-                step="1"
-                defaultValue={show?.cinemaId ?? filters.cinemaId ?? 1}
-                required
-              />
-            </Field>
-            <Field label="Mã phòng">
-              <input
-                name="screen"
-                type="number"
-                min="1"
-                step="1"
-                defaultValue={show?.screenId ?? filters.screenId ?? 1}
-                required
-              />
-            </Field>
+            <VenueFields {...venue} change={setVenue} required />
           </div>
           <Field label="Giá cơ bản (VND)">
             <input

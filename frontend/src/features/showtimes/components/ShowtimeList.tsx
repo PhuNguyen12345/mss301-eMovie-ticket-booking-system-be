@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { VenueName } from "../../cinema/VenueName";
 import { Button } from "../../../components/ui/Button";
 import { EmptyState } from "../../../components/ui/Feedback";
 import { formatTime, formatMoney } from "../../../lib/date";
@@ -39,7 +40,10 @@ export function ShowtimeList({
               <div className="movie-cell">
                 <h3>{movie?.title ?? `Phim #${show.movieId}`}</h3>
                 <p>
-                  Rạp {show.cinemaId} · Phòng {show.screenId}
+                  <VenueName
+                    cinemaId={show.cinemaId}
+                    screenId={show.screenId}
+                  />
                   {movie ? ` · ${movie.durationMinutes} phút` : ""}
                 </p>
                 <span

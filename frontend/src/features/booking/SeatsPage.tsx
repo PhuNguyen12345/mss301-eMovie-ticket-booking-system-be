@@ -5,6 +5,7 @@ import { useBookingShowtime, useSeatMap, useHoldSeats } from "./hooks";
 import { useMovie } from "../movies/hooks";
 import { LoginDialog } from "../auth/LoginDialog";
 import { SeatGrid } from "./SeatGrid";
+import { VenueName } from "../cinema/VenueName";
 import { Button } from "../../components/ui/Button";
 import { Placeholder } from "../../components/ui/Placeholder";
 import {
@@ -101,8 +102,11 @@ function SeatSelection({ id }: { id: number }) {
           {show.data && (
             <p>
               {formatDate(show.data.startTime)} ·{" "}
-              {formatTime(show.data.startTime)} · Rạp #{show.data.cinemaId} ·
-              Phòng #{show.data.screenId}
+              {formatTime(show.data.startTime)} ·{" "}
+              <VenueName
+                cinemaId={show.data.cinemaId}
+                screenId={show.data.screenId}
+              />
             </p>
           )}
         </div>

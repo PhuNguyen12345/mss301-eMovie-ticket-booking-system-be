@@ -48,10 +48,13 @@ export function usePriceDraft(prices: SeatPrice[], types: SeatType[]) {
   const remoteChanged = remoteSignature !== baseline.signature;
   const fields = useMemo(
     () =>
-      Object.keys(values)
-        .map(Number)
-        .sort((a, b) => a - b),
-    [values],
+      [
+        ...new Set([
+          ...Object.keys(values).map(Number),
+          ...types.map((type) => type.id),
+        ]),
+      ].sort((a, b) => a - b),
+    [values, types],
   );
   const reset = useCallback(
     (next: SeatPrice[] = prices) => {

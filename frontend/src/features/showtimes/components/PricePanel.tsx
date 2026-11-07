@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useSeatTypes } from "../../cinema/hooks";
+import { VenueName } from "../../cinema/VenueName";
 import { Plus, RotateCcw } from "lucide-react";
 import { useServices } from "../../../app/ServicesProvider";
 import { Button } from "../../../components/ui/Button";
@@ -15,7 +17,7 @@ import {
   useReplaceSeatPrices,
   useSeatPrices,
 } from "../hooks/useShowtimeQueries";
-import type { Movie, SeatPrice, Showtime } from "../model/contracts";
+import type { Movie, SeatPrice, SeatType, Showtime } from "../model/contracts";
 
 type Props = {
   show: Showtime;
@@ -29,6 +31,7 @@ type Props = {
 };
 export function PricePanel(props: Props) {
   const query = useSeatPrices(props.show.id);
+  const types = useSeatTypes();
   return (
     <aside className="price-panel">
       <header className="panel-header">
@@ -43,7 +46,12 @@ export function PricePanel(props: Props) {
           {formatDate(props.show.startTime)} ·{" "}
           {formatTime(props.show.startTime)}
         </span>
-        <span>Phòng {props.show.screenId}</span>
+        <span>
+          <VenueName
+            cinemaId={props.show.cinemaId}
+            screenId={props.show.screenId}
+          />
+        </span>
       </div>
       {query.isError && query.data && (
         <ErrorMessage
@@ -53,7 +61,13 @@ export function PricePanel(props: Props) {
           }}
         />
       )}
-      {query.isPending ? (
+      <ErrorMessage
+        error={types.error}
+        retry={() => {
+          void types.refetch();
+        }}
+      />
+      {query.isPending || types.isPending ? (
         <Loading label="Đang tải bảng giá…" />
       ) : query.isError && !query.data ? (
         <ErrorMessage
@@ -65,6 +79,7 @@ export function PricePanel(props: Props) {
       ) : (
         <PriceEditor
           {...props}
+          types={types.data ?? []}
           prices={query.data!}
           refreshing={query.isFetching || query.isError}
         />
@@ -105,9 +120,10 @@ function PriceEditor({
   onDirtyChange,
   onBusyChange,
   notify,
-}: Props & { prices: SeatPrice[]; refreshing: boolean }) {
+  types,
+}: Props & { prices: SeatPrice[]; refreshing: boolean; types: SeatType[] }) {
   const { showtimes } = useServices();
-  const draft = usePriceDraft(prices, showtimes.seatTypes);
+  const draft = usePriceDraft(prices, types);
   const mutation = useReplaceSeatPrices(show.id);
   const [error, setError] = useState<unknown>(null);
   const [newType, setNewType] = useState("");
@@ -162,13 +178,13 @@ function PriceEditor({
           {draft.fields.map((id) => (
             <Field
               key={id}
-              label={`Giá ${showtimes.seatTypes.find((type) => type.id === id)?.name ?? `loại ghế #${id}`}`}
+              label={`Giá ${types.find((type) => type.id === id)?.name ?? `loại ghế #${id}`}`}
             >
               <input
                 className="price-input"
                 inputMode="decimal"
                 placeholder={`${show.basePrice}`}
-                value={draft.values[id]}
+                value={draft.values[id] ?? ""}
                 onChange={(event) => {
                   draft.change(id, event.target.value);
                   setError(null);
@@ -177,32 +193,34 @@ function PriceEditor({
             </Field>
           ))}
         </div>
-        <div className="add-price-type">
-          <Field label="Mã loại ghế mới">
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={newType}
-              placeholder="VD: 4"
-              onChange={(e) => setNewType(e.target.value)}
-            />
-          </Field>
-          <Button
-            aria-label="Thêm loại ghế"
-            onClick={() => {
-              try {
-                draft.add(Number(newType));
-                setNewType("");
-                setError(null);
-              } catch (error) {
-                setError(error);
-              }
-            }}
-          >
-            <Plus size={17} />
-          </Button>
-        </div>
+        {showtimes.mode === "demo" && (
+          <div className="add-price-type">
+            <Field label="Mã loại ghế mới">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={newType}
+                placeholder="VD: 4"
+                onChange={(e) => setNewType(e.target.value)}
+              />
+            </Field>
+            <Button
+              aria-label="Thêm loại ghế"
+              onClick={() => {
+                try {
+                  draft.add(Number(newType));
+                  setNewType("");
+                  setError(null);
+                } catch (error) {
+                  setError(error);
+                }
+              }}
+            >
+              <Plus size={17} />
+            </Button>
+          </div>
+        )}
         <p className="field-hint">Đơn vị: VND. Để trống để dùng giá cơ bản.</p>
         <Button variant="ghost" className="reset-prices" onClick={draft.clear}>
           <RotateCcw size={14} />

@@ -5,7 +5,8 @@ import { MoviePoster, safeWebUrl } from "./MoviePoster";
 import { useShowtimes } from "../showtimes/hooks/useShowtimeQueries";
 import { localDate, formatTime, formatMoney, hasStarted } from "../../lib/date";
 import { Field } from "../../components/ui/Field";
-import { Placeholder } from "../../components/ui/Placeholder";
+import { useCinemas } from "../cinema/hooks";
+import { VenueName } from "../cinema/VenueName";
 import {
   Loading,
   ErrorMessage,
@@ -82,8 +83,11 @@ export function MoviePage() {
 function MovieShowtimes({ id }: { id: number }) {
   const [date, setDate] = useState(localDate);
   const [page, setPage] = useState(0);
+  const [cinemaId, setCinemaId] = useState<number>();
+  const cinemas = useCinemas();
   const query = useShowtimes({
     movieId: id,
+    cinemaId,
     date,
     status: "SCHEDULED",
     page,
@@ -109,10 +113,31 @@ function MovieShowtimes({ id }: { id: number }) {
           />
         </Field>
       </div>
-      <Placeholder
-        compact
-        title="Tìm theo rạp"
-        description="Bộ lọc tên rạp đang được bổ sung. Bạn vẫn có thể chọn suất chiếu bên dưới."
+      {cinemas.isEnabled && (
+        <Field label="Rạp">
+          <select
+            value={cinemaId ?? ""}
+            onChange={(e) => {
+              setCinemaId(Number(e.target.value) || undefined);
+              setPage(0);
+            }}
+          >
+            <option value="">Tất cả rạp</option>
+            {cinemas.data
+              ?.filter((c) => c.status === "ACTIVE")
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {c.location}
+                </option>
+              ))}
+          </select>
+        </Field>
+      )}
+      <ErrorMessage
+        error={cinemas.error}
+        retry={() => {
+          void cinemas.refetch();
+        }}
       />
       {query.isPending ? (
         <Loading />
@@ -137,7 +162,10 @@ function MovieShowtimes({ id }: { id: number }) {
                   <span> — {formatTime(show.endTime)}</span>
                 </div>
                 <p>
-                  Rạp #{show.cinemaId} · Phòng #{show.screenId}
+                  <VenueName
+                    cinemaId={show.cinemaId}
+                    screenId={show.screenId}
+                  />
                 </p>
                 {show.cinemaLocation && <p>{show.cinemaLocation}</p>}
                 <span className="muted">

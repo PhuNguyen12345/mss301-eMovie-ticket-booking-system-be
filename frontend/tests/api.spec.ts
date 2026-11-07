@@ -1,3 +1,4 @@
+import { cinemaResponse } from "./cinema-fixtures";
 import { test, expect, type Page } from "@playwright/test";
 
 const show = {
@@ -39,6 +40,8 @@ async function mockApi(page: Page) {
       const url = new URL(req.url());
       const send = (data: unknown, status = 200) =>
         route.fulfill({ status, json: { status, message: "OK", data } });
+      const catalogue = cinemaResponse(url.pathname);
+      if (catalogue !== undefined) return send(catalogue);
       if (url.pathname === "/api/auth/login")
         return send({
           accessToken: "test-admin-token",
@@ -87,9 +90,7 @@ async function mockApi(page: Page) {
   );
   await page.goto("/admin/showtimes");
   await login(page);
-  await expect(
-    page.getByLabel("Giá loại ghế #2", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Giá VIP", { exact: true })).toBeVisible();
   await expect(
     page.getByLabel("Phim", { exact: true }).locator("option"),
   ).toHaveCount(3);
@@ -127,12 +128,12 @@ test("failed writes preserve the draft; successful writes update cache and inval
   page,
 }) => {
   const state = await mockApi(page);
-  await page.getByLabel("Giá loại ghế #2", { exact: true }).fill("155000");
+  await page.getByLabel("Giá VIP", { exact: true }).fill("155000");
   state.putStatus = 503;
   await page.getByRole("button", { name: "Lưu bảng giá", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Dịch vụ đang gặp sự cố");
   expect(state.putCalls).toBe(1);
-  await expect(page.getByLabel("Giá loại ghế #2", { exact: true })).toHaveValue(
+  await expect(page.getByLabel("Giá VIP", { exact: true })).toHaveValue(
     "155000",
   );
   expect(state.writes[0]).toEqual({
@@ -156,7 +157,7 @@ test("failed writes preserve the draft; successful writes update cache and inval
 
 test("401 clears the session without replaying the write", async ({ page }) => {
   const state = await mockApi(page);
-  await page.getByLabel("Giá loại ghế #2", { exact: true }).fill("155000");
+  await page.getByLabel("Giá VIP", { exact: true }).fill("155000");
   state.putStatus = 401;
   await page.getByRole("button", { name: "Lưu bảng giá", exact: true }).click();
   await expect(

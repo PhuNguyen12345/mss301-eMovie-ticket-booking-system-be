@@ -1,4 +1,5 @@
 import { Field } from "../../../components/ui/Field";
+import { VenueFields } from "../../cinema/VenueFields";
 import type { Movie, ShowtimeFilters as Filters } from "../model/contracts";
 export function ShowtimeFilters({
   value,
@@ -28,31 +29,11 @@ export function ShowtimeFilters({
           ))}
         </select>
       </Field>
-      <Field label="Mã rạp">
-        <input
-          type="number"
-          min="1"
-          step="1"
-          placeholder="Tất cả"
-          value={value.cinemaId ?? ""}
-          onChange={(e) =>
-            update({
-              cinemaId: optionalId(e.target.value),
-              screenId: undefined,
-            })
-          }
-        />
-      </Field>
-      <Field label="Mã phòng">
-        <input
-          type="number"
-          min="1"
-          step="1"
-          placeholder="Tất cả"
-          value={value.screenId ?? ""}
-          onChange={(e) => update({ screenId: optionalId(e.target.value) })}
-        />
-      </Field>
+      <VenueFields
+        cinemaId={value.cinemaId}
+        screenId={value.screenId}
+        change={update}
+      />
       <Field label="Trạng thái">
         <select
           value={value.status ?? ""}

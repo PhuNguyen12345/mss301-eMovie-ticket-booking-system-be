@@ -779,3 +779,118 @@ a.booking-card:hover {
     flex-wrap: wrap;
   }
 }
+
+.catalogue-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.catalogue-section {
+  margin-bottom: 20px;
+}
+.catalogue-section h2 {
+  font-size: 18px;
+}
+.catalogue-records {
+  display: grid;
+  gap: 10px;
+}
+.catalogue-record {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.catalogue-record.chosen {
+  border-color: var(--accent);
+}
+.catalogue-record h2 {
+  font-size: 17px;
+}
+.catalogue-record small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+.record-select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  flex: 1;
+}
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.physical-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.physical-seat {
+  display: grid;
+  gap: 5px;
+  padding: 16px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.physical-seat.inactive {
+  opacity: 0.55;
+}
+.physical-seat span,
+.physical-seat small {
+  font-size: 11px;
+}
+.auth-page {
+  max-width: 560px;
+}
+.auth-page h1 {
+  font-size: 26px;
+  margin-bottom: 24px;
+}
+.auth-page form > .button {
+  margin-top: 20px;
+}
+.auth-page .text-link {
+  display: inline-block;
+  margin-top: 24px;
+}
+.order-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 24px;
+}
+@media (max-width: 900px) {
+  .catalogue-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .catalogue-record {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .record-actions {
+    justify-content: flex-start;
+  }
+  .order-filters {
+    grid-template-columns: 1fr;
+  }
+  .catalogue-section .section-top {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
