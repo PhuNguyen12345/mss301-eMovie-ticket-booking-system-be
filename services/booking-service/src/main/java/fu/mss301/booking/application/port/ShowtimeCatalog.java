@@ -11,7 +11,8 @@ public interface ShowtimeCatalog {
     /** Seat-type prices keyed by seat type id; empty when showtime-service has no per-type pricing. */
     Map<Integer, SeatTypePrice> getSeatPrices(Long showtimeId);
 
-    record ShowtimeSnapshot(Long id, Integer screenId, LocalDateTime startTime, BigDecimal basePrice, boolean scheduled) {
+    record ShowtimeSnapshot(Long id, Integer movieId, Integer cinemaId, Integer screenId, LocalDateTime startTime,
+                            LocalDateTime endTime, BigDecimal basePrice, boolean scheduled) {
         public boolean isOpenForBookingAt(LocalDateTime now) {
             return scheduled && startTime.isAfter(now);
         }

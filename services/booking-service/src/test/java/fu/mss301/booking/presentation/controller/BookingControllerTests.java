@@ -58,7 +58,7 @@ class BookingControllerTests {
     @Test
     void holdReturns201WithLocation() throws Exception {
         when(holdSeats.hold(7, 3L, List.of(101, 102))).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
-            BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), LocalDateTime.now(), LocalDateTime.now(),
+            BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), LocalDateTime.now(), LocalDateTime.now(), null,
             List.of(), List.of(), null));
         mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
@@ -110,7 +110,7 @@ class BookingControllerTests {
     void replacingCombosPassesTheLinesAndReturnsTheBooking() throws Exception {
         when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 2)))).thenReturn(new BookingView(11,
             "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"),
-            LocalDateTime.now(), LocalDateTime.now(), List.of(),
+            LocalDateTime.now(), LocalDateTime.now(), null, List.of(),
             List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), null));
         mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":2}]}"))

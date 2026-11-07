@@ -36,6 +36,15 @@ public class BookingSeatEntity {
     @Column(name = "price", nullable = false, updatable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
+    @Column(name = "row_code", updatable = false, length = 10)
+    private String rowCode;
+
+    @Column(name = "seat_number", updatable = false)
+    private Integer seatNumber;
+
+    @Column(name = "seat_type_name", updatable = false, length = 50)
+    private String seatTypeName;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private SeatHoldStatus status;

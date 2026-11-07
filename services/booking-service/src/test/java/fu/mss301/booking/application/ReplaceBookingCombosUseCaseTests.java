@@ -9,6 +9,7 @@ import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.SeatSelection;
+import fu.mss301.booking.domain.booking.TicketDetails;
 import fu.mss301.booking.domain.combo.Combo;
 import fu.mss301.booking.domain.combo.ComboRepository;
 import fu.mss301.booking.domain.combo.ComboStatus;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.when;
 class ReplaceBookingCombosUseCaseTests {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2027-01-20T18:00:00Z"), ZoneOffset.UTC);
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
+    private static final TicketDetails TICKET = new TicketDetails("Dune", null, "Rạp 1", "Phòng 1", NOW, NOW.plusHours(2));
 
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final PaymentRepository payments = mock(PaymentRepository.class);
@@ -61,9 +63,9 @@ class ReplaceBookingCombosUseCaseTests {
 
     @BeforeEach
     void pendingBooking() {
-        var held = Booking.hold(7, 3L, List.of(new SeatSelection(1, null, new BigDecimal("90000"))), 8, NOW,
+        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null)), 8, NOW,
             Duration.ofMinutes(5));
-        booking = Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.bookingTime(),
+        booking = Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
             held.totalAmount(), held.status(), held.expiredAt(), 0, held.createdAt(), held.updatedAt(), held.seats(),
             held.combos());
         when(bookings.findByIdForUpdate(42)).thenReturn(Optional.of(booking));

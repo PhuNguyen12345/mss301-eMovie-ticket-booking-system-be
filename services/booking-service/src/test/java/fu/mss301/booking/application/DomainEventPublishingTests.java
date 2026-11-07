@@ -9,6 +9,7 @@ import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.SeatSelection;
+import fu.mss301.booking.domain.booking.TicketDetails;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.when;
 class DomainEventPublishingTests {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2027-01-20T18:00:00Z"), ZoneOffset.UTC);
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
+    private static final TicketDetails TICKET = new TicketDetails("Dune", null, "Rạp 1", "Phòng 1", NOW, NOW.plusHours(2));
 
     private final BookingRepository bookings = mock(BookingRepository.class);
     private final PaymentRepository payments = mock(PaymentRepository.class);
@@ -94,9 +96,9 @@ class DomainEventPublishingTests {
     }
 
     private static Booking pending(LocalDateTime expiredAt) {
-        var held = Booking.hold(7, 3L, List.of(new SeatSelection(1, null, new BigDecimal("90000"))), 8,
+        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null)), 8,
             NOW.minusMinutes(10), Duration.ofMinutes(5));
-        return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.bookingTime(),
+        return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
             held.totalAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(), held.combos());
     }
 

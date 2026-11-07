@@ -14,11 +14,11 @@ public interface ShowtimeClient {
     @GetMapping("/api/showtimes/{id}")
     ApiResponse<ShowtimeInfo> getShowtime(@PathVariable("id") Long id);
 
-    /** Proposed contract (showtime_seat_prices); booking falls back to basePrice while it does not exist. */
     @GetMapping("/api/showtimes/{id}/seat-prices")
     ApiResponse<List<SeatPriceInfo>> getSeatPrices(@PathVariable("id") Long id);
 
-    record ShowtimeInfo(Long id, Integer screenId, LocalDateTime startTime, BigDecimal basePrice, String status) {}
+    record ShowtimeInfo(Long id, Integer movieId, Integer cinemaId, Integer screenId, LocalDateTime startTime,
+                        LocalDateTime endTime, BigDecimal basePrice, String status) {}
 
     record SeatPriceInfo(Integer id, Integer seatTypeId, BigDecimal price) {}
 }

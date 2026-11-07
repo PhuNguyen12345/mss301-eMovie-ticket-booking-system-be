@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class BookingTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2027, 1, 20, 18, 0);
     private static final Duration TTL = Duration.ofMinutes(5);
+    private static final TicketDetails TICKET = new TicketDetails("Dune", "https://img/dune.jpg", "Rạp Hà Nội", "Phòng 1",
+        NOW.plusDays(1), NOW.plusDays(1).plusHours(2));
 
     @Test
     void holdComputesTotalAndHoldsEverySeat() {
@@ -25,6 +27,10 @@ class BookingTest {
         assertEquals(new BigDecimal("210000.50"), booking.totalAmount());
         assertEquals(NOW.plus(TTL), booking.expiredAt());
         assertTrue(booking.bookingCode().value().startsWith("BK"));
+        assertEquals(TICKET, booking.ticket());
+        assertEquals("A", booking.seats().getFirst().rowCode());
+        assertEquals(1, booking.seats().getFirst().seatNumber());
+        assertEquals("Ghế thường", booking.seats().getFirst().seatTypeName());
         assertTrue(booking.seats().stream().allMatch(s -> s.status() == SeatHoldStatus.HELD));
     }
 
@@ -32,7 +38,7 @@ class BookingTest {
     void holdRejectsEmptyDuplicateAndTooManySeats() {
         assertThrows(DomainException.class, () -> hold());
         assertThrows(DomainException.class, () -> hold(seat(1, "1"), seat(1, "1")));
-        assertThrows(DomainException.class, () -> Booking.hold(7, 3L, List.of(seat(1, "1"), seat(2, "1")), 1, NOW, TTL));
+        assertThrows(DomainException.class, () -> Booking.hold(7, 3L, TICKET, List.of(seat(1, "1"), seat(2, "1")), 1, NOW, TTL));
         assertThrows(DomainException.class, () -> seat(1, "-1"));
         assertThrows(DomainException.class, () -> seat(1, "1.001"));
     }
@@ -87,12 +93,14 @@ class BookingTest {
 
     @Test
     void restoreLoadsAnOldBookingWithoutReapplyingBusinessRules() {
-        var seat = BookingSeat.restore(5, 3L, null, 1, new BigDecimal("90000.00"), SeatHoldStatus.RELEASED, NOW, NOW);
-        Booking booking = Booking.restore(42, 7, 3L, new BookingCode("BK260101000000ABCDEF"), NOW,
+        var seat = BookingSeat.restore(5, 3L, null, 1, new BigDecimal("90000.00"), null, null, null, SeatHoldStatus.RELEASED,
+            NOW, NOW);
+        Booking booking = Booking.restore(42, 7, 3L, new BookingCode("BK260101000000ABCDEF"), null, NOW,
             new BigDecimal("90000.00"), BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat), List.of());
         assertEquals(BookingStatus.EXPIRED, booking.status());
         assertEquals(3, booking.version());
         assertEquals(5, booking.seats().getFirst().id());
+        assertNull(booking.ticket());
         assertEquals(List.of(), booking.pullEvents());
     }
 
@@ -121,7 +129,7 @@ class BookingTest {
         Booking booking = persisted(hold(seat(1, "90000")));
         var stored = BookingCombo.restore(77, 5, "Bắp nước", 2, new BigDecimal("85000.00"));
         Booking restored = Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(),
-            booking.bookingTime(), new BigDecimal("260000.00"), booking.status(), booking.expiredAt(), 0,
+            booking.ticket(), booking.bookingTime(), new BigDecimal("260000.00"), booking.status(), booking.expiredAt(), 0,
             booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored));
         restored.replaceCombos(List.of(combo(5, 3, "95000"), combo(6, 1, "40000")), NOW);
         assertEquals(77, restored.combos().getFirst().id());
@@ -155,6 +163,16 @@ class BookingTest {
     }
 
     @Test
+    void aBookingNeedsCompleteTicketDetails() {
+        assertThrows(DomainException.class, () -> Booking.hold(7, 3L, null, List.of(seat(1, "1")), 8, NOW, TTL));
+        assertThrows(DomainException.class, () -> new TicketDetails(" ", null, "Rạp", "Phòng", NOW, NOW));
+        assertThrows(DomainException.class, () -> new TicketDetails("Dune", null, null, "Phòng", NOW, NOW));
+        assertThrows(DomainException.class, () -> new TicketDetails("Dune", null, "Rạp", "", NOW, NOW));
+        assertThrows(DomainException.class, () -> new TicketDetails("Dune", null, "Rạp", "Phòng", null, NOW));
+        assertNull(new TicketDetails("Dune", null, "Rạp", "Phòng", NOW, NOW).moviePosterUrl());
+    }
+
+    @Test
     void combosCannotBeModifiedFromOutside() {
         Booking booking = hold(seat(1, "90000"));
         assertThrows(UnsupportedOperationException.class, () -> booking.combos().clear());
@@ -165,15 +183,15 @@ class BookingTest {
     }
 
     private static Booking hold(SeatSelection... seats) {
-        return Booking.hold(7, 3L, List.of(seats), 8, NOW, TTL);
+        return Booking.hold(7, 3L, TICKET, List.of(seats), 8, NOW, TTL);
     }
 
     private static SeatSelection seat(int id, String price) {
-        return new SeatSelection(id, null, new BigDecimal(price));
+        return new SeatSelection(id, null, new BigDecimal(price), "A", id, "Ghế thường");
     }
 
     private static Booking persisted(Booking booking) {
-        return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.bookingTime(),
+        return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.ticket(), booking.bookingTime(),
             booking.totalAmount(), booking.status(), booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(),
             booking.seats(), booking.combos());
     }

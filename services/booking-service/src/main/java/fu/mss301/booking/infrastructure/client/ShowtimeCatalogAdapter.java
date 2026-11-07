@@ -20,12 +20,13 @@ class ShowtimeCatalogAdapter implements ShowtimeCatalog {
     @Override
     public ShowtimeSnapshot getShowtime(Long showtimeId) {
         var showtime = Upstream.call(() -> client.getShowtime(showtimeId), "Showtime");
-        if (!showtimeId.equals(showtime.id()) || showtime.screenId() == null || showtime.startTime() == null
+        if (!showtimeId.equals(showtime.id()) || showtime.movieId() == null || showtime.cinemaId() == null
+                || showtime.screenId() == null || showtime.startTime() == null || showtime.endTime() == null
                 || showtime.basePrice() == null || showtime.basePrice().signum() < 0 || showtime.status() == null) {
             throw new UpstreamServiceException("Showtime service returned invalid showtime data");
         }
-        return new ShowtimeSnapshot(showtime.id(), showtime.screenId(), showtime.startTime(), showtime.basePrice(),
-            "SCHEDULED".equals(showtime.status()));
+        return new ShowtimeSnapshot(showtime.id(), showtime.movieId(), showtime.cinemaId(), showtime.screenId(),
+            showtime.startTime(), showtime.endTime(), showtime.basePrice(), "SCHEDULED".equals(showtime.status()));
     }
 
     @Override
