@@ -24,6 +24,19 @@ API_PROXY_TARGET=http://127.0.0.1:8080
 ```
 
 Vite proxies `/api` to the gateway. Restart after changing environment variables.
+On the current development machine, the live backend snapshot and database volumes
+are managed from `.worktrees/local-runtime` in the main repository:
+
+```sh
+docker compose -p emovie-local -f compose.yml -f compose.local.yml up -d
+```
+
+The live FE preview is at `http://127.0.0.1:5174`; port 5173 is the visual demo.
+Local admin/customer credentials are in the runtime directory's private
+`.local-credentials.json`. This machine-specific snapshot is not part of the
+checkout; see [MEMORY.md](MEMORY.md) for source revisions, local fixes and verified
+integration limits.
+
 For production, configure the hosting reverse proxy for `/api` and serve
 `index.html` for FE routes, including `/payment/result`. Alternatively set
 `VITE_API_BASE_URL` at build time and configure backend CORS. `VITE_*` values are

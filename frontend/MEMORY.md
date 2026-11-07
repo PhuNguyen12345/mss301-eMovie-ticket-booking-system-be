@@ -73,3 +73,31 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
 Playwright uses fresh demo/API servers on 5183/5184 to avoid the review preview.
 Use `npm run dev:demo -- --port 5173` for sample catalogue/showtime visual review;
 use normal `npm run dev` for real API mode. The demo cannot book or pay.
+
+## Running local backend (2026-11-07)
+
+- Runtime snapshot: `.worktrees/local-runtime` under the main repository. Backend
+  source is `b2fbd0f`; user-service and compose are from PR #13 at `83b98a9`.
+  PR #13 was not merged. This directory is ignored and is specific to this machine.
+- Start from that directory with `docker compose -p emovie-local -f compose.yml
+  -f compose.local.yml up -d`. Gateway: `http://127.0.0.1:8080`; MailHog:
+  `http://127.0.0.1:8026`; frontend using live APIs: `http://127.0.0.1:5174`.
+  Port 5173 remains the explicit visual demo.
+- Four MySQL databases run with persistent Docker volumes: user, movie, showtime,
+  booking. Four sample movies were created through the movie API. Local admin and
+  customer accounts were registered and OTP-verified using MailHog. Credentials
+  are in runtime `.local-credentials.json` (private, ignored; never commit it).
+- Runtime-only fixes: invalid compose JWT interpolation; three OTP email senders
+  missing `OtpDeliveryPort` implementation and `eventType()`, causing
+  `No projection handler`. These fixes still need to be incorporated upstream.
+- Public registration verification/resend remain blocked at the gateway; the
+  local bootstrap verified accounts directly inside user-service. Do not remove
+  the FE registration placeholder based on this local bootstrap.
+- Verified against actual HTTP APIs and MySQL: movie create/list, admin/customer
+  login, profile, empty booking history, empty showtime list and empty refunds.
+  Live Chromium also passed catalogue, both account roles, admin movie/refund
+  screens and mobile layout without HTTP mocks. Local artifacts are in frontend
+  `test-results/live-*`; runtime `local-checks.json` records the API checks.
+- Cinema/screen/seat APIs are still absent. No showtimes/bookings were fabricated.
+  Seat holds and real PayOS checkout remain unverified and unavailable until
+  cinema dependencies and payment credentials are configured.
