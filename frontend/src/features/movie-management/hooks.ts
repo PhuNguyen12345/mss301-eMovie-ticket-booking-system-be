@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServices } from "../../app/ServicesProvider";
+import { ApiError } from "../../lib/http";
 import type {
   ReferenceKind,
   ReferenceSearch,
   ReferenceInput,
   CreditInput,
+  Reference,
 } from "./api";
 
 export const managementKeys = {
@@ -14,6 +16,36 @@ export const managementKeys = {
   credits: (id: number) =>
     ["movie-management", "movie", id, "credits"] as const,
 };
+export function useGenreOptions() {
+  const { movieManagement, showtimes } = useServices();
+  return useQuery({
+    queryKey: [...managementKeys.references("genres"), "options"],
+    enabled: showtimes.mode === "api",
+    queryFn: async ({ signal }) => {
+      const rows: Reference[] = [];
+      for (let page = 0; page < 100; page++) {
+        const result = await movieManagement.references(
+          "genres",
+          { keyword: "", page, size: 100 },
+          signal,
+        );
+        if (result.page !== page || (!result.last && !result.data.length))
+          throw new ApiError(
+            200,
+            "Phân trang thể loại không hợp lệ.",
+            "INVALID_RESPONSE",
+          );
+        rows.push(...result.data);
+        if (result.last) return rows;
+      }
+      throw new ApiError(
+        200,
+        "Danh mục thể loại vượt giới hạn tải.",
+        "INVALID_RESPONSE",
+      );
+    },
+  });
+}
 export function useReferences(kind: ReferenceKind, filters: ReferenceSearch) {
   const { movieManagement, showtimes } = useServices();
   return useQuery({

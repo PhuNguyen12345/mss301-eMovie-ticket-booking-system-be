@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MovieAdminNav } from "../movie-management/MovieAdminNav";
+import { GenreFilter } from "../movie-management/GenreFilter";
+import { MovieStatusDialog } from "./MovieStatusDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServices } from "../../app/ServicesProvider";
 import { useMovieCatalogue, movieKeys } from "../movies/hooks";
-import type { Movie, MovieInput } from "../movies/api";
+import type { Movie, MovieInput, MovieSearch } from "../movies/api";
 import { MoviePoster } from "../movies/MoviePoster";
 import { Button } from "../../components/ui/Button";
 import { Field } from "../../components/ui/Field";
@@ -18,7 +20,7 @@ import { Pagination } from "../../components/ui/Pagination";
 import { Placeholder } from "../../components/ui/Placeholder";
 export function AdminMoviesPage() {
   const { showtimes } = useServices();
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<MovieSearch>({
     keyword: "",
     status: "",
     page: 0,
@@ -26,6 +28,7 @@ export function AdminMoviesPage() {
   });
   const query = useMovieCatalogue(filters);
   const [edit, setEdit] = useState<Movie | "create" | null>(null);
+  const [statusMovie, setStatusMovie] = useState<Movie | null>(null);
   return (
     <main className="page">
       <MovieAdminNav />
@@ -74,6 +77,12 @@ export function AdminMoviesPage() {
           </select>
         </Field>
         <Button type="submit">Tìm kiếm</Button>
+        <GenreFilter
+          value={filters.genreId}
+          change={(genreId) =>
+            setFilters((previous) => ({ ...previous, genreId, page: 0 }))
+          }
+        />
       </form>
       {query.isPending ? (
         <Loading />
@@ -107,6 +116,12 @@ export function AdminMoviesPage() {
                 <div className="record-actions">
                   <Button
                     disabled={showtimes.mode !== "api"}
+                    onClick={() => setStatusMovie(movie)}
+                  >
+                    Đổi trạng thái
+                  </Button>
+                  <Button
+                    disabled={showtimes.mode !== "api"}
                     onClick={() => setEdit(movie)}
                   >
                     Chỉnh sửa
@@ -132,6 +147,12 @@ export function AdminMoviesPage() {
         <MovieDialog
           movie={edit === "create" ? undefined : edit}
           close={() => setEdit(null)}
+        />
+      )}
+      {statusMovie && (
+        <MovieStatusDialog
+          movie={statusMovie}
+          close={() => setStatusMovie(null)}
         />
       )}
     </main>

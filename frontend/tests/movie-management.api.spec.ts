@@ -35,6 +35,8 @@ async function setup(page: Page) {
     posterUrl: null as string | null,
     refreshCalls: 0,
     role: "ADMIN",
+    movieStatus: "PRESENTING",
+    statusResponse: 200,
   };
   await page.route("https://assets.example.test/**", (route) =>
     route.fulfill({ contentType: "image/png", body: png }),
@@ -73,7 +75,7 @@ async function setup(page: Page) {
         id: 1,
         title: "Phim kiểm thử",
         durationMinutes: 120,
-        status: "PRESENTING",
+        status: state.movieStatus,
         releaseDate: "2030-01-01",
         posterUrl: state.posterUrl,
         genres: state.linked,
@@ -81,6 +83,12 @@ async function setup(page: Page) {
       };
       if (path === "/api/movies") return send(pageOf([movie]));
       if (path === "/api/movies/1") return send(movie);
+      if (path === "/api/movies/1/status" && method === "PATCH") {
+        if (state.statusResponse !== 200)
+          return send(null, state.statusResponse, "Không thể đổi trạng thái");
+        state.movieStatus = body.status;
+        return send({ ...movie, status: state.movieStatus });
+      }
       if (path === "/api/movies/1/genres") {
         if (method === "PUT") {
           if (state.genreStatus !== 200)
@@ -345,4 +353,198 @@ test("automatic refresh keeps the active session and rotated credentials out of 
       () => JSON.stringify(localStorage) + JSON.stringify(sessionStorage),
     ),
   ).not.toMatch(/token-|refresh-/);
+});
+
+test("genre filters follow catalogue pages, preserve URL filters and use server results", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  state.genres = Array.from({ length: 101 }, (_, i) => ({
+    id: i + 1,
+    name: `Thể loại ${i + 1}`,
+    description: null,
+  }));
+  const requests: URL[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/movies",
+    (route) => {
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const current = Number(url.searchParams.get("page"));
+      const genre = url.searchParams.get("genreId");
+      return route.fulfill({
+        json: {
+          status: 200,
+          message: "OK",
+          data: {
+            data: [
+              {
+                id: current + 1,
+                title: `Kết quả máy chủ ${genre ?? "tất cả"} trang ${current}`,
+                durationMinutes: 120,
+                status: url.searchParams.get("status") || "PRESENTING",
+              },
+            ],
+            page: current,
+            size: 12,
+            totalElements: 13,
+            totalPages: 2,
+            first: current === 0,
+            last: current === 1,
+          },
+        },
+      });
+    },
+  );
+  await page.goto("/?q=Phim&page=1");
+  await expect(
+    page.getByLabel("Thể loại", { exact: true }).locator("option"),
+  ).toHaveCount(102);
+  await page.getByLabel("Thể loại", { exact: true }).selectOption("101");
+  await expect(
+    page.getByRole("heading", { name: "Kết quả máy chủ 101 trang 0" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("q")).toBe("Phim");
+  expect(new URL(page.url()).searchParams.has("page")).toBe(false);
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Kết quả máy chủ 101 trang 1" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Sắp chiếu", exact: true }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("status"))
+    .toBe("WILL_PRESENT");
+  expect(requests.at(-1)?.searchParams.get("genreId")).toBe("101");
+  expect(requests.at(-1)?.searchParams.get("page")).toBe("0");
+  await page.getByLabel("Tìm phim", { exact: true }).fill("Khác");
+  await page.getByRole("button", { name: "Tìm kiếm", exact: true }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("keyword"))
+    .toBe("Khác");
+  expect(requests.at(-1)?.searchParams.get("genreId")).toBe("101");
+  await page.getByLabel("Thể loại", { exact: true }).selectOption("");
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.has("genreId"))
+    .toBe(false);
+  await page.goBack();
+  await expect(page.getByLabel("Thể loại", { exact: true })).toHaveValue("101");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("quick movie status requires confirmation, retains failed changes and only patches status", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  await login(page, "/admin/movies");
+  await page
+    .getByRole("button", { name: "Đổi trạng thái", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "Xác nhận đổi trạng thái" }),
+  ).toBeDisabled();
+  await dialog.getByLabel("Trạng thái mới").selectOption("EXPIRED");
+  expect(state.writes.filter((w) => w.method === "PATCH")).toHaveLength(0);
+  await expect(dialog).toContainText("không tự hủy lịch chiếu");
+  state.statusResponse = 409;
+  await dialog.getByRole("button", { name: "Xác nhận đổi trạng thái" }).click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Không thể đổi trạng thái",
+  );
+  await expect(dialog.getByLabel("Trạng thái mới")).toHaveValue("EXPIRED");
+  expect(state.movieStatus).toBe("PRESENTING");
+  expect(state.writes.filter((w) => w.method === "PATCH")).toHaveLength(1);
+  state.statusResponse = 200;
+  await dialog.getByRole("button", { name: "Xác nhận đổi trạng thái" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator(".admin-movie-row .badge")).toHaveText(
+    "Ngừng chiếu",
+  );
+  const writes = state.writes.filter((w) => w.method === "PATCH");
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toMatchObject({
+    path: "/api/movies/1/status",
+    body: { status: "EXPIRED" },
+  });
+  expect(state.writes.filter((w) => w.method === "PUT")).toHaveLength(0);
+});
+
+test("customer location filter resets cinema and page and persists through pagination", async ({
+  page,
+}) => {
+  await setup(page);
+  const requests: URL[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/cinemas",
+    (route) =>
+      route.fulfill({
+        json: {
+          status: 200,
+          message: "OK",
+          data: [
+            {
+              id: 1,
+              code: "HN",
+              name: "Rạp Hà Nội",
+              location: "Hà Nội",
+              status: "ACTIVE",
+            },
+          ],
+        },
+      }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/showtimes",
+    (route) => {
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const current = Number(url.searchParams.get("page"));
+      return route.fulfill({
+        json: {
+          status: 200,
+          message: "OK",
+          data: {
+            data: [],
+            page: current,
+            size: 20,
+            totalElements: 21,
+            totalPages: 2,
+            first: current === 0,
+            last: current === 1,
+          },
+        },
+      });
+    },
+  );
+  await page.goto("/movies/1");
+  await page.getByLabel("Rạp", { exact: true }).selectOption("1");
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("page")).toBe("1");
+  await page.getByLabel("Địa điểm", { exact: true }).fill("  Hà Nội  ");
+  await page.getByRole("button", { name: "Lọc địa điểm" }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("location"))
+    .toBe("Hà Nội");
+  expect(requests.at(-1)?.searchParams.get("page")).toBe("0");
+  expect(requests.at(-1)?.searchParams.has("cinemaId")).toBe(false);
+  await expect(page.getByLabel("Rạp", { exact: true })).toHaveValue("");
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("page")).toBe("1");
+  expect(requests.at(-1)?.searchParams.get("location")).toBe("Hà Nội");
+  await page.getByLabel("Địa điểm", { exact: true }).fill("");
+  await page.getByRole("button", { name: "Lọc địa điểm" }).click();
+  await expect(page.getByLabel("Địa điểm", { exact: true })).toHaveValue("");
+  // The first unfiltered page may be fresh in cache; the next page is uncached.
+  await expect(
+    page.getByRole("button", { name: "Trang trước" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.has("location"))
+    .toBe(false);
 });

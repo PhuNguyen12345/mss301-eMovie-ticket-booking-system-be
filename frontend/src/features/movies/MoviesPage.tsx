@@ -10,6 +10,7 @@ import {
   EmptyState,
 } from "../../components/ui/Feedback";
 import { Pagination } from "../../components/ui/Pagination";
+import { GenreFilter } from "../movie-management/GenreFilter";
 export function MoviesPage() {
   const [params, setParams] = useSearchParams();
   const rawPage = Number(params.get("page") ?? 0);
@@ -17,7 +18,19 @@ export function MoviesPage() {
   const status =
     params.get("status") === "WILL_PRESENT" ? "WILL_PRESENT" : "PRESENTING";
   const keyword = params.get("q") ?? "";
-  const query = useMovieCatalogue({ keyword, status, page, size: 12 });
+  const rawGenre = Number(params.get("genreId"));
+  const genreId =
+    Number.isSafeInteger(rawGenre) && rawGenre > 0 ? rawGenre : undefined;
+  const query = useMovieCatalogue({ keyword, status, genreId, page, size: 12 });
+  function update(patch: Record<string, string | undefined>) {
+    const next = new URLSearchParams(params);
+    next.delete("page");
+    Object.entries(patch).forEach(([key, value]) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    });
+    setParams(next);
+  }
   return (
     <main className="page cinema-page">
       <div className="catalogue-heading">
@@ -30,7 +43,7 @@ export function MoviesPage() {
           className="search-form"
           onSubmit={(event) => {
             event.preventDefault();
-            setParams({
+            update({
               q: String(
                 new FormData(event.currentTarget).get("q") ?? "",
               ).trim(),
@@ -55,16 +68,22 @@ export function MoviesPage() {
       <div className="tabs" aria-label="Danh mục phim">
         <Button
           aria-pressed={status === "PRESENTING"}
-          onClick={() => setParams({ q: keyword, status: "PRESENTING" })}
+          onClick={() => update({ status: "PRESENTING" })}
         >
           Đang chiếu
         </Button>
         <Button
           aria-pressed={status === "WILL_PRESENT"}
-          onClick={() => setParams({ q: keyword, status: "WILL_PRESENT" })}
+          onClick={() => update({ status: "WILL_PRESENT" })}
         >
           Sắp chiếu
         </Button>
+      </div>
+      <div className="catalogue-filters">
+        <GenreFilter
+          value={genreId}
+          change={(id) => update({ genreId: id?.toString() })}
+        />
       </div>
       {query.isPending ? (
         <Loading />
@@ -107,9 +126,7 @@ export function MoviesPage() {
           <Pagination
             page={page}
             totalPages={query.data.totalPages}
-            change={(next) =>
-              setParams({ q: keyword, status, page: String(next) })
-            }
+            change={(next) => update({ page: String(next) })}
           />
         </>
       )}

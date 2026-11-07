@@ -22,6 +22,7 @@ export type MovieInput = Omit<Movie, "id" | "genres" | "credits">;
 export type MovieSearch = {
   keyword: string;
   status: string;
+  genreId?: number;
   page: number;
   size: number;
 };
@@ -30,7 +31,7 @@ export function createMovieApi(client: HttpClient) {
     list: (filters: MovieSearch, signal?: AbortSignal) => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
-        if (value !== "") params.set(key, String(value));
+        if (value !== undefined && value !== "") params.set(key, String(value));
       });
       return client.request(`/movies?${params}`, pageSchema(movieSchema), {
         signal,

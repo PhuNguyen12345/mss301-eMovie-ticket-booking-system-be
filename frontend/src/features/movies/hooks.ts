@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServices } from "../../app/ServicesProvider";
 import type { Movie, MovieSearch } from "./api";
 import { ApiError } from "../../lib/http";
@@ -20,6 +20,7 @@ export function useMovieCatalogue(filters: MovieSearch) {
       }));
       const matches = rows.filter(
         (m) =>
+          !filters.genreId &&
           (!filters.status || m.status === filters.status) &&
           m.title
             .toLocaleLowerCase("vi")
@@ -37,6 +38,19 @@ export function useMovieCatalogue(filters: MovieSearch) {
         first: filters.page === 0,
         last: (filters.page + 1) * filters.size >= matches.length,
       };
+    },
+  });
+}
+export function useMovieStatus(id: number) {
+  const { movies } = useServices();
+  const cache = useQueryClient();
+  return useMutation({
+    mutationFn: (status: Movie["status"]) => movies.status(id, status),
+    onSuccess: async () => {
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: movieKeys.all }),
+        cache.invalidateQueries({ queryKey: ["movies"] }),
+      ]);
     },
   });
 }
