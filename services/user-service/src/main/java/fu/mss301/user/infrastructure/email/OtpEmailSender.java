@@ -1,5 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
+import fu.mss301.user.application.port.out.OtpDeliveryPort;
 import fu.mss301.user.domain.event.RegistrationOtpRequested;
 
 import fu.mss301.user.domain.model.OtpDeliveryStatus;
@@ -15,7 +16,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
 @Component
-public class OtpEmailSender {
+public class OtpEmailSender implements OtpDeliveryPort<RegistrationOtpRequested> {
     private static final Logger log = LoggerFactory.getLogger(OtpEmailSender.class);
     private final JavaMailSender mailSender;
     private final PendingRegistrationRepository repository;
@@ -30,6 +31,12 @@ public class OtpEmailSender {
         this.from = from;
     }
 
+    @Override
+    public Class<RegistrationOtpRequested> eventType() {
+        return RegistrationOtpRequested.class;
+    }
+
+    @Override
     public void send(RegistrationOtpRequested event) {
         try {
             LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
@@ -57,6 +64,7 @@ public class OtpEmailSender {
         }
     }
 
+    @Override
     public void markFailed(RegistrationOtpRequested event) {
         try {
             updateStatus(event, OtpDeliveryStatus.FAILED);
