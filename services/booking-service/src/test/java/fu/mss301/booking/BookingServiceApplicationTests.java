@@ -6,6 +6,8 @@ import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView.Availability;
+import fu.mss301.booking.application.combo.ComboCommand;
+import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
@@ -27,6 +29,7 @@ import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
+import fu.mss301.booking.domain.combo.ComboStatus;
 import fu.mss301.booking.domain.payment.PaymentStatus;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,6 +84,7 @@ class BookingServiceApplicationTests {
     @Autowired private HandlePayosWebhookUseCase webhook;
     @Autowired private RefundAdminUseCase refunds;
     @Autowired private MutableClock clock;
+    @Autowired private ComboService comboService;
     @Autowired private BookingRepository repository;
     @Autowired private Transactions transactions;
     @Autowired private DomainEvents domainEvents;
@@ -275,6 +279,21 @@ class BookingServiceApplicationTests {
         assertTrue(page.first());
         assertFalse(page.last());
         assertEquals(List.of(first.id()), queries.myBookings(userId, 1, 1).content().stream().map(b -> b.id()).toList());
+    }
+
+    @Test
+    void comboMenuOnlyShowsWhatIsOnSale() {
+        var combo = comboService.create(new ComboCommand("Bắp nước " + showtimeId, "1 bắp", new BigDecimal("85000")));
+        assertEquals(ComboStatus.ACTIVE, combo.status());
+        assertTrue(comboService.listOnSale().contains(combo));
+
+        var updated = comboService.update(combo.id(), new ComboCommand("Bắp lớn " + showtimeId, null, new BigDecimal("95000")));
+        assertEquals(new BigDecimal("95000.00"), updated.price());
+
+        comboService.deactivate(combo.id());
+        assertTrue(comboService.listOnSale().stream().noneMatch(c -> c.id().equals(combo.id())));
+        assertTrue(comboService.listAll().stream().anyMatch(c -> c.id().equals(combo.id())));
+        assertEquals(ComboStatus.ACTIVE, comboService.activate(combo.id()).status());
     }
 
     @Test
