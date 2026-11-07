@@ -18,6 +18,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 /** PayOS adapter (payos-java v2). The SDK client is created lazily so the service starts without keys. */
 @Component
@@ -79,6 +80,7 @@ class PayosPaymentGateway implements PaymentGateway {
         } catch (PaymentGatewayException exception) {
             throw new InvalidWebhookException("PayOS is not configured");
         }
+        requireSignedData(body);
         try {
             var data = payos.webhooks().verify(body);
             if (data == null || data.getOrderCode() == null || data.getAmount() == null) {
@@ -88,6 +90,16 @@ class PayosPaymentGateway implements PaymentGateway {
                 data.getReference(), parseTime(data.getTransactionDateTime()));
         } catch (WebhookException | InvalidSignatureException exception) {
             throw new InvalidWebhookException("Invalid PayOS webhook: " + exception.getMessage());
+        }
+    }
+
+    /** The SDK dereferences the signature without a null check, so a missing one must be rejected here. */
+    private static void requireSignedData(Object body) {
+        if (!(body instanceof Map<?, ?> webhook)
+                || !(webhook.get("data") instanceof Map<?, ?>)
+                || !(webhook.get("signature") instanceof String signature)
+                || signature.isBlank()) {
+            throw new InvalidWebhookException("Webhook data or signature is missing");
         }
     }
 

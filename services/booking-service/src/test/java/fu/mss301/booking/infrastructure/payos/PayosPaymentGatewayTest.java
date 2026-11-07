@@ -37,6 +37,28 @@ class PayosPaymentGatewayTest {
     }
 
     @Test
+    void rejectsWebhookWithoutSignatureOrData() {
+        var signed = webhook(data(), CHECKSUM_KEY);
+        var noSignature = new HashMap<>(signed);
+        noSignature.remove("signature");
+        var nullSignature = new HashMap<>(signed);
+        nullSignature.put("signature", null);
+        var blankSignature = new HashMap<>(signed);
+        blankSignature.put("signature", " ");
+        var numericSignature = new HashMap<>(signed);
+        numericSignature.put("signature", 123);
+        var noData = new HashMap<>(signed);
+        noData.remove("data");
+        var textData = new HashMap<>(signed);
+        textData.put("data", "text");
+
+        for (Object body : java.util.Arrays.asList(Map.of(), noSignature, nullSignature, blankSignature, numericSignature,
+                noData, textData, "text", null)) {
+            assertThrows(InvalidWebhookException.class, () -> gateway.verifyWebhook(body), String.valueOf(body));
+        }
+    }
+
+    @Test
     void notConfiguredGatewayRejectsWebhooks() {
         var unconfigured = new PayosPaymentGateway(new PayosProperties("", "", "", "", ""));
         assertThrows(InvalidWebhookException.class, () -> unconfigured.verifyWebhook(webhook(data(), CHECKSUM_KEY)));
