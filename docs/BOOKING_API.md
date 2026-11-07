@@ -14,6 +14,7 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | --- | --- | --- | --- | --- |
 | GET | `/api/bookings/showtimes/{showtimeId}/seats` | Public | Sơ đồ ghế + trạng thái + giá theo suất chiếu | 200 |
 | POST | `/api/bookings` | Đăng nhập | Giữ ghế, tạo booking `PENDING_PAYMENT` | 201 + `Location` |
+| GET | `/api/bookings?status=&showtimeId=&userId=&code=&from=&to=&page=0&size=10` | ADMIN | Danh sách và tìm kiếm mọi booking (mới nhất trước) | 200 |
 | GET | `/api/bookings/me?page=0&size=10` | Đăng nhập | Lịch sử booking của tôi (mới nhất trước) | 200 |
 | GET | `/api/bookings/{id}` | Chủ booking / ADMIN | Chi tiết booking + lần thanh toán gần nhất | 200 |
 | POST | `/api/bookings/{id}/cancel` | Chủ booking | Hủy booking đang chờ thanh toán, nhả ghế | 200 |
@@ -209,6 +210,34 @@ Trả về booking với `totalAmount` = tiền ghế + tiền combo, và danh s
 
 **FE cần thêm combo trước khi tạo link thanh toán.** Link PayOS mang số tiền cố định, nên sau `POST /api/bookings/{id}/payments` không sửa combo được nữa. Nếu tạo link thất bại, payment chuyển `FAILED` và có thể sửa combo rồi thanh toán lại.
 
+### 2.8 Danh sách và tìm kiếm booking (ADMIN)
+
+`GET /api/bookings` trả `PageResponseDTO` chứa `BookingView`, mới nhất trước. Mọi tham số đều tùy chọn và kết hợp với nhau bằng AND. Không truyền tham số nào thì trả tất cả.
+
+| Tham số | Kiểu | Ý nghĩa |
+| --- | --- | --- |
+| `status` | enum | `PENDING_PAYMENT`, `CONFIRMED`, `CANCELLED`, `EXPIRED` |
+| `showtimeId` | number | Theo suất chiếu |
+| `userId` | number | Theo khách |
+| `code` | string | Đúng toàn bộ mã booking, không phân biệt hoa thường |
+| `from` | datetime | `booking_time` từ mốc này, tính cả mốc |
+| `to` | datetime | `booking_time` trước mốc này, không tính mốc |
+| `page` | number | Mặc định 0 |
+| `size` | number | 1..100, mặc định 10 |
+
+`from`, `to` theo định dạng ISO, không có múi giờ, và hiểu theo giờ Việt Nam (`BOOKING_ZONE`). Ví dụ lấy booking trong ngày 20/01/2027:
+
+```bash
+curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:00&to=2027-01-21T00:00:00" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Sai định dạng tham số, `size` ngoài 1..100, `from` không trước `to` |
+| 401 | Chưa đăng nhập |
+| 403 | Không phải ADMIN |
+
 ## 3. State machine
 
 ```mermaid
@@ -388,5 +417,7 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `booking_seats.active_flag` (generated) | Chỉ ghế `HELD`/`BOOKED` tham gia unique index |
 | `payment_transactions.order_code` | `orderCode` số nguyên PayOS yêu cầu, unique, dùng tra cứu khi nhận webhook |
 | `payment_transactions.payment_link_id`, `checkout_url` | Lấy lại link đang mở thay vì tạo link mới |
+
+`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
 
 `payment_transactions.provider_transaction_id` giữ đúng nghĩa ERD: mã giao dịch ngân hàng (`reference`) PayOS trả về khi thanh toán thành công.
