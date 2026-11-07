@@ -1,7 +1,7 @@
 # Booking API
 
 Booking Service giữ ghế theo suất chiếu, tạo booking chờ thanh toán, thanh toán qua **PayOS** và xác nhận / hết hạn / hoàn tiền.
-Service được viết theo **Pragmatic DDD** – xem [PRAGMATIC_DDD.md](PRAGMATIC_DDD.md) để hiểu cách tổ chức code.
+Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md) để hiểu cách tổ chức code.
 
 - Port local: `8085` (`SERVER_PORT`). Qua gateway: `http://localhost:8080`.
 - Database: `booking_db` (MySQL, Flyway `V1__init_booking_schema.sql`).
@@ -225,7 +225,7 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | 2 người giữ cùng 1 ghế | `booking_seats.active_flag` = 1 khi `HELD`/`BOOKED`, `NULL` khi `RELEASED`; `UNIQUE (showtime_id, seat_id, active_flag)` → insert thứ 2 fail → 409. MySQL cho phép nhiều `NULL` nên lịch sử ghế đã nhả không chặn lần đặt sau. |
 | Webhook, job hết hạn, người dùng hủy chạy cùng lúc | Load aggregate bằng `SELECT ... FOR UPDATE` + cột `version` (optimistic lock). |
 | PayOS gửi webhook nhiều lần | `markSucceeded()` idempotent; `order_code` unique. |
-| 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event (`@TransactionalEventListener(AFTER_COMMIT)`). |
+| 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event: use case publish qua port `DomainEvents`, listener ở `infrastructure` chạy policy sau commit. |
 | Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. |
 | Webhook không tới | Job hết hạn + endpoint `sync` chủ động hỏi PayOS. |
 | Gọi service khác | Feign gọi **ngoài** transaction DB; timeout 2s/3s; lỗi → 503. |
