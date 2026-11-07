@@ -1,5 +1,9 @@
 # Pragmatic DDD – Kiến trúc bên trong mỗi service
 
+> **Lưu ý:** booking-service và showtime-service đã chuyển sang Clean Architecture, nên booking không còn là service mẫu của tài liệu này. Các ví dụ code bên dưới phản ánh phiên bản booking trước đó (`@Entity` trong domain, Spring Data tự publish event).
+>
+> Tài liệu vẫn hữu ích như một bước trung gian khi refactor từ MVC: bỏ setter, đưa logic vào aggregate, tách use case. Khi cần tách domain khỏi framework, xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md) và [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md).
+
 Tài liệu này mô tả cách team tổ chức code **bên trong một microservice** theo DDD Tactical Design, phiên bản "Pragmatic"
 (theo tài liệu môn [02.1_DDD_Tactical_Design_Aggregate_Explained.pdf](02.1_DDD_Tactical_Design_Aggregate_Explained.pdf)).
 `booking-service` là service mẫu đầu tiên; các service khác refactor dần theo mục 6.

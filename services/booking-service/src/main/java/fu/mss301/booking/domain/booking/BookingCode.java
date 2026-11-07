@@ -1,16 +1,13 @@
 package fu.mss301.booking.domain.booking;
 
 import fu.mss301.booking.domain.shared.DomainException;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /** Human-readable booking reference shown on tickets, e.g. {@code BK260129103000X7K2QD}. */
-@Embeddable
-public record BookingCode(@Column(name = "booking_code", nullable = false, updatable = false, length = 50) String value) {
+public record BookingCode(String value) {
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyMMddHHmmss");
     private static final SecureRandom RANDOM = new SecureRandom();

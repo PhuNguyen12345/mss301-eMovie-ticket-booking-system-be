@@ -9,9 +9,21 @@ import java.util.List;
 
 @FeignClient(name = "cinema-service", url = "${booking.clients.cinema-url:}")
 public interface CinemaClient {
-    /** Proposed contract for cinema-service: the physical seats of one screen. */
     @GetMapping("/api/screens/{screenId}/seats")
     ApiResponse<List<SeatInfo>> getSeats(@PathVariable("screenId") Integer screenId);
+
+    @GetMapping("/api/cinemas/{id}")
+    ApiResponse<NamedInfo> getCinema(@PathVariable("id") Integer id);
+
+    @GetMapping("/api/screens/{id}")
+    ApiResponse<NamedInfo> getScreen(@PathVariable("id") Integer id);
+
+    @GetMapping("/api/seat-types")
+    ApiResponse<List<SeatTypeInfo>> getSeatTypes();
+
+    record NamedInfo(String name) {}
+
+    record SeatTypeInfo(Integer id, String name) {}
 
     record SeatInfo(Integer id, Integer screenId, String rowCode, Integer seatNumber, Integer seatTypeId, String status) {}
 }

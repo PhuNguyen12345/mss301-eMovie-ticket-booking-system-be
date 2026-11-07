@@ -1,6 +1,6 @@
 # Cấu trúc hệ thống (Project Structure)
 
-Dự án được thiết kế theo mô hình Multi-module Maven. Ở mức độ kiến trúc tổng thể, hệ thống tuân theo chuẩn **Microservices**. Ở mức độ chi tiết bên trong mỗi service, hệ thống áp dụng **Pragmatic DDD (DDD Tactical Design)**: logic nghiệp vụ nằm trong Aggregate (Rich Model) thay vì rải rác ở tầng Service như mô hình MVC 3 lớp trước đây. Hướng dẫn chi tiết và cách refactor: [PRAGMATIC_DDD.md](PRAGMATIC_DDD.md).
+Dự án được thiết kế theo mô hình Multi-module Maven. Ở mức độ kiến trúc tổng thể, hệ thống tuân theo chuẩn **Microservices**. Ở mức độ chi tiết bên trong mỗi service, logic nghiệp vụ nằm trong Aggregate (Rich Model) thay vì rải rác ở tầng Service như mô hình MVC 3 lớp trước đây. Kiến trúc của từng service xem ở mục 3. Booking-service và showtime-service theo **Clean Architecture**: [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md), [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md). Bước trung gian khi refactor từ MVC: [PRAGMATIC_DDD.md](PRAGMATIC_DDD.md).
 
 ## 1. Cấu trúc thư mục toàn cục
 
@@ -21,24 +21,25 @@ e-movie-ticket-booking-system/
 │           └── GlobalExceptionHandler.java # Bắt lỗi toàn cục (@RestControllerAdvice)
 │
 ├── services/               # Thư mục chứa các Microservices nghiệp vụ
-│   ├── booking-service/    # Giữ ghế, đặt vé, thanh toán PayOS, hoàn tiền (service mẫu Pragmatic DDD)
+│   ├── booking-service/    # Giữ ghế, đặt vé, thanh toán PayOS, hoàn tiền (Clean Architecture)
 │   │   └── src/main/java/fu/mss301/booking/
 │   │       ├── BookingServiceApplication.java
 │   │       ├── domain/            # Aggregate (Booking, PaymentTransaction), Entity con, Value Object,
-│   │       │   │                  # Domain Event, Repository interface – KHÔNG phụ thuộc Web/Feign/SDK
-│   │       │   ├── shared/        # DomainException, InvalidStateTransitionException
+│   │       │   │                  # Domain Event, Repository interface – chỉ dùng Java, không framework
+│   │       │   ├── shared/        # DomainEvent, DomainException, InvalidStateTransitionException
 │   │       │   ├── booking/       # Booking, BookingSeat, BookingCode, SeatSelection, BookingRepository, event/
 │   │       │   └── payment/       # PaymentTransaction, Refund, PaymentRepository, event/
-│   │       ├── application/       # Use case điều phối (1 transaction = 1 aggregate), View trả về
-│   │       │   ├── port/          # Interface tới hệ thống ngoài: ShowtimeCatalog, SeatLayoutProvider, PaymentGateway
+│   │       ├── application/       # Use case điều phối (1 transaction = 1 aggregate), View trả về – không Spring
+│   │       │   ├── port/          # Interface ra ngoài: Transactions, DomainEvents, BookingQueries, PaymentGateway, ...
 │   │       │   ├── booking/       # HoldSeatsUseCase, CancelBookingUseCase, SeatMapQuery, ...
 │   │       │   ├── payment/       # InitiatePaymentUseCase, HandlePayosWebhookUseCase, ...
-│   │       │   └── policy/        # Lắng nghe Domain Event → cập nhật aggregate khác
+│   │       │   └── policy/        # Phản ứng với Domain Event → cập nhật aggregate khác
 │   │       ├── infrastructure/    # Chi tiết kỹ thuật implement domain/port
-│   │       │   ├── persistence/   # Spring Data JPA + adapter của Repository
+│   │       │   ├── persistence/   # JPA entity, mapper, Spring Data + adapter của Repository
+│   │       │   ├── event/         # Publish Domain Event, listener chạy policy sau commit
 │   │       │   ├── client/        # OpenFeign gọi showtime/cinema + adapter
 │   │       │   ├── payos/         # PayOS SDK adapter
-│   │       │   ├── config/        # @ConfigurationProperties, Clock, bean cấu hình
+│   │       │   ├── config/        # UseCaseConfig, SpringTransactions, Clock, @ConfigurationProperties
 │   │       │   └── scheduling/    # Job hết hạn giữ ghế & đối soát thanh toán
 │   │       └── presentation/      # REST API
 │   │           ├── controller/
@@ -75,7 +76,7 @@ Checklist review đầy đủ: [PRAGMATIC_DDD.md – mục 4](PRAGMATIC_DDD.md#4
 
 | Service | Kiến trúc hiện tại | Ghi chú |
 | --- | --- | --- |
-| booking-service | Pragmatic DDD | Service mẫu – xem [BOOKING_API.md](BOOKING_API.md) |
+| booking-service | Clean Architecture + DDD thuần | Domain/application không phụ thuộc Spring; JPA tách riêng; có domain event. Xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md), [BOOKING_API.md](BOOKING_API.md) |
 | user-service | Hexagonal (DDD thuần, domain tách JPA) | Tương thích, không bắt buộc đổi |
 | movie-service | MVC 3 lớp | Refactor dần theo [PRAGMATIC_DDD.md – mục 6](PRAGMATIC_DDD.md#6-hướng-dẫn-refactor-service-mvc-sang-pragmatic-ddd) |
 | showtime-service | Clean Architecture + DDD thuần | Domain/application không phụ thuộc Spring; JPA tách riêng. Xem [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md) |

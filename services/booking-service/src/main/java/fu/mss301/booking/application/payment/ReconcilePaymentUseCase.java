@@ -5,27 +5,29 @@ import fu.mss301.booking.application.booking.BookingView;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.PaymentGateway.LinkStatus;
+import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.payment.PaymentRepository;
 import fu.mss301.booking.domain.payment.PaymentTransaction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+
+import java.lang.System.Logger.Level;
 
 /** Pulls payment state from PayOS so the system does not depend on webhooks alone. */
-@Service
 public class ReconcilePaymentUseCase {
-    private static final Logger log = LoggerFactory.getLogger(ReconcilePaymentUseCase.class);
+    private static final System.Logger log = System.getLogger(ReconcilePaymentUseCase.class.getName());
     private final PaymentRepository payments;
     private final PaymentGateway gateway;
     private final PaymentSettlementService settlement;
     private final BookingQueryService bookingQueries;
+    private final Transactions transactions;
 
     public ReconcilePaymentUseCase(PaymentRepository payments, PaymentGateway gateway,
-                                   PaymentSettlementService settlement, BookingQueryService bookingQueries) {
+                                   PaymentSettlementService settlement, BookingQueryService bookingQueries,
+                                   Transactions transactions) {
         this.payments = payments;
         this.gateway = gateway;
         this.settlement = settlement;
         this.bookingQueries = bookingQueries;
+        this.transactions = transactions;
     }
 
     /** Customer came back from the PayOS page: refresh from PayOS, then return the booking. */
@@ -38,16 +40,18 @@ public class ReconcilePaymentUseCase {
     /** @return true when one of the booking's open payments turned out to be paid */
     public boolean reconcileBooking(Integer bookingId) {
         boolean paid = false;
-        for (PaymentTransaction payment : payments.findByBookingId(bookingId)) {
-            if (!payment.isPending() || payment.getCheckoutUrl() == null) continue;
+        // Snapshot first: PayOS is called outside any transaction.
+        for (PaymentTransaction payment : transactions.read(() -> payments.findByBookingId(bookingId))) {
+            if (!payment.isPending() || payment.checkoutUrl() == null) continue;
             try {
-                var state = gateway.getLinkState(payment.getOrderCode());
+                var state = gateway.getLinkState(payment.orderCode());
                 if (state.status() == LinkStatus.PAID) {
-                    paid |= settlement.recordSuccess(payment.getOrderCode(), state.amountPaid(), state.reference(),
+                    paid |= settlement.recordSuccess(payment.orderCode(), state.amountPaid(), state.reference(),
                         state.paidAt());
                 }
             } catch (PaymentGatewayException exception) {
-                log.warn("Could not reconcile order {} with PayOS: {}", payment.getOrderCode(), exception.getMessage());
+                log.log(Level.WARNING, () -> "Could not reconcile order " + payment.orderCode() + " with PayOS: "
+                    + exception.getMessage());
             }
         }
         return paid;
@@ -55,11 +59,11 @@ public class ReconcilePaymentUseCase {
 
     /** Safety net for PaymentSucceeded events lost between commit and listener (e.g. a crash). */
     public void settleUnsettled(int limit) {
-        for (PaymentTransaction payment : payments.findUnsettledSuccessful(limit)) {
+        for (PaymentTransaction payment : transactions.read(() -> payments.findUnsettledSuccessful(limit))) {
             try {
-                settlement.settle(payment.getId(), payment.getBookingId());
+                settlement.settle(payment.id(), payment.bookingId());
             } catch (RuntimeException exception) {
-                log.warn("Could not settle payment {}: {}", payment.getId(), exception.getMessage());
+                log.log(Level.WARNING, () -> "Could not settle payment " + payment.id() + ": " + exception.getMessage());
             }
         }
     }

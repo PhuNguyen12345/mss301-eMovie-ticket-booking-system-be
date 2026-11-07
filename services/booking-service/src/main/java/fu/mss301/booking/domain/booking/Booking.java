@@ -3,21 +3,20 @@ package fu.mss301.booking.domain.booking;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
+import fu.mss301.booking.domain.shared.DomainEvent;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
-import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.springframework.data.domain.AbstractAggregateRoot;
 
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Aggregate root for one customer's seat reservation on one showtime.
@@ -25,56 +24,52 @@ import java.util.List;
  * State machine: {@code PENDING_PAYMENT -> CONFIRMED | CANCELLED | EXPIRED}. Seats are HELD while the
  * booking waits for payment, BOOKED once confirmed and RELEASED when it is cancelled or expires.
  */
-@Entity
-@Table(name = "bookings")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Booking extends AbstractAggregateRoot<Booking> {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+public final class Booking {
+    public static final int MAX_COMBO_QUANTITY = 20;
+    private static final BigDecimal MAX_TOTAL = new BigDecimal("99999999.99");
 
-    @Column(name = "user_id", nullable = false, updatable = false)
-    private Integer userId;
-
-    @Column(name = "showtime_id", nullable = false, updatable = false)
-    private Long showtimeId;
-
-    @Embedded
-    private BookingCode bookingCode;
-
-    @Column(name = "booking_time", nullable = false, updatable = false)
-    private LocalDateTime bookingTime;
-
-    @Column(name = "total_amount", nullable = false, updatable = false, precision = 10, scale = 2)
+    private final Integer id;
+    private final Integer userId;
+    private final Long showtimeId;
+    private final BookingCode bookingCode;
+    private final TicketDetails ticket;
+    private final LocalDateTime bookingTime;
     private BigDecimal totalAmount;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
     private BookingStatus status;
-
-    @Column(name = "expired_at", nullable = false, updatable = false)
-    private LocalDateTime expiredAt;
-
-    @Version
-    @Getter(AccessLevel.NONE)
-    private Integer version;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
+    private final LocalDateTime expiredAt;
+    private final Integer version;
+    private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private final List<BookingSeat> seats;
+    private final List<BookingCombo> combos;
+    private final List<DomainEvent> events = new ArrayList<>();
 
-    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("seatId ASC")
-    @Getter(AccessLevel.NONE)
-    private List<BookingSeat> seats = new ArrayList<>();
+    private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, TicketDetails ticket,
+                    LocalDateTime bookingTime,
+                    BigDecimal totalAmount, BookingStatus status, LocalDateTime expiredAt, Integer version,
+                    LocalDateTime createdAt, LocalDateTime updatedAt, List<BookingSeat> seats, List<BookingCombo> combos) {
+        this.id = id;
+        this.userId = userId;
+        this.showtimeId = showtimeId;
+        this.bookingCode = bookingCode;
+        this.ticket = ticket;
+        this.bookingTime = bookingTime;
+        this.totalAmount = totalAmount;
+        this.status = status;
+        this.expiredAt = expiredAt;
+        this.version = version;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.seats = new ArrayList<>(seats);
+        this.combos = new ArrayList<>(combos);
+    }
 
-    public static Booking hold(Integer userId, Long showtimeId, List<SeatSelection> selections, int maxSeats,
+    public static Booking hold(Integer userId, Long showtimeId, TicketDetails ticket, List<SeatSelection> selections,
+                               int maxSeats,
                                LocalDateTime now, Duration holdTtl) {
         if (userId == null || userId <= 0) throw new DomainException("User id must be positive");
         if (showtimeId == null || showtimeId <= 0) throw new DomainException("Showtime id must be positive");
+        if (ticket == null) throw new DomainException("Ticket details are required");
         if (selections == null || selections.isEmpty()) throw new DomainException("At least one seat is required");
         if (selections.size() > maxSeats) throw new DomainException("A booking can hold at most " + maxSeats + " seats");
         if (holdTtl == null || holdTtl.isNegative() || holdTtl.isZero()) throw new DomainException("Hold TTL must be positive");
@@ -83,19 +78,24 @@ public class Booking extends AbstractAggregateRoot<Booking> {
             if (!seen.add(selection.seatId())) throw new DomainException("Seat " + selection.seatId() + " is selected twice");
         }
 
-        Booking booking = new Booking();
-        booking.userId = userId;
-        booking.showtimeId = showtimeId;
-        booking.bookingCode = BookingCode.generate(now);
-        booking.bookingTime = now;
-        booking.status = BookingStatus.PENDING_PAYMENT;
-        booking.expiredAt = now.plus(holdTtl);
-        booking.createdAt = now;
-        booking.updatedAt = now;
-        selections.forEach(selection -> booking.seats.add(BookingSeat.hold(booking, showtimeId, selection, now)));
-        booking.totalAmount = selections.stream().map(SeatSelection::price)
+        var seats = selections.stream().map(selection -> BookingSeat.hold(showtimeId, selection, now)).toList();
+        BigDecimal total = selections.stream().map(SeatSelection::price)
             .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
-        return booking;
+        return new Booking(null, userId, showtimeId, BookingCode.generate(now), ticket, now, total,
+            BookingStatus.PENDING_PAYMENT, now.plus(holdTtl), null, now, now, seats, List.of());
+    }
+
+    /**
+     * Rebuilds a stored booking; performs no business validation because old bookings must always load.
+     *
+     * @param ticket null for bookings made before ticket details were stored
+     */
+    public static Booking restore(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode,
+                                  TicketDetails ticket, LocalDateTime bookingTime, BigDecimal totalAmount, BookingStatus status,
+                                  LocalDateTime expiredAt, Integer version, LocalDateTime createdAt,
+                                  LocalDateTime updatedAt, List<BookingSeat> seats, List<BookingCombo> combos) {
+        return new Booking(id, userId, showtimeId, bookingCode, ticket, bookingTime, totalAmount, status, expiredAt, version,
+            createdAt, updatedAt, seats, combos);
     }
 
     /** Payment succeeded: the held seats become booked. Allowed until the hold is actually released. */
@@ -104,7 +104,7 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         status = BookingStatus.CONFIRMED;
         seats.forEach(seat -> seat.book(now));
         updatedAt = now;
-        registerEvent(new BookingConfirmed(id));
+        events.add(new BookingConfirmed(id));
     }
 
     public void cancelBy(Integer requesterId, LocalDateTime now) {
@@ -112,7 +112,7 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         requirePending("cancel");
         status = BookingStatus.CANCELLED;
         releaseSeats(now);
-        registerEvent(new BookingCancelled(id));
+        events.add(new BookingCancelled(id));
     }
 
     public void expire(LocalDateTime now) {
@@ -120,7 +120,37 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         if (now.isBefore(expiredAt)) throw new InvalidStateTransitionException("Booking hold has not expired yet");
         status = BookingStatus.EXPIRED;
         releaseSeats(now);
-        registerEvent(new BookingExpired(id));
+        events.add(new BookingExpired(id));
+    }
+
+    /**
+     * Replaces all combos and recalculates the total. Combos kept from the previous list keep their line and
+     * take the new quantity and price. A rejected change leaves the booking untouched.
+     */
+    public void replaceCombos(List<ComboSelection> selections, LocalDateTime now) {
+        requirePending("change combos of");
+        if (!now.isBefore(expiredAt)) throw new InvalidStateTransitionException("Booking seat hold has expired");
+        var existing = combos.stream().collect(Collectors.toMap(BookingCombo::comboId, Function.identity()));
+        var seen = new HashSet<Integer>();
+        var replaced = new ArrayList<BookingCombo>();
+        for (ComboSelection selection : selections) {
+            if (!seen.add(selection.comboId())) throw new DomainException("Combo " + selection.comboId() + " is selected twice");
+            if (selection.quantity() == null || selection.quantity() < 1 || selection.quantity() > MAX_COMBO_QUANTITY) {
+                throw new DomainException("Combo quantity must be between 1 and " + MAX_COMBO_QUANTITY);
+            }
+            var current = existing.get(selection.comboId());
+            replaced.add(current == null ? BookingCombo.add(selection) : current.replacedBy(selection));
+        }
+        replaced.sort(Comparator.comparing(BookingCombo::comboId));
+
+        BigDecimal total = seats.stream().map(BookingSeat::price).reduce(BigDecimal.ZERO, BigDecimal::add);
+        total = replaced.stream().map(BookingCombo::lineTotal).reduce(total, BigDecimal::add);
+        if (total.compareTo(MAX_TOTAL) > 0) throw new DomainException("Booking total is too large");
+
+        combos.clear();
+        combos.addAll(replaced);
+        totalAmount = total.setScale(2);
+        updatedAt = now;
     }
 
     /** A new payment may only be started while the seat hold is still valid. */
@@ -132,9 +162,29 @@ public class Booking extends AbstractAggregateRoot<Booking> {
         return userId.equals(requesterId);
     }
 
-    public List<BookingSeat> getSeats() {
-        return Collections.unmodifiableList(seats);
+    /** Returns the events raised since the last call and forgets them, so each is published once. */
+    public List<DomainEvent> pullEvents() {
+        var pulled = List.copyOf(events);
+        events.clear();
+        return pulled;
     }
+
+    public Integer id() { return id; }
+    public Integer userId() { return userId; }
+    public Long showtimeId() { return showtimeId; }
+    public BookingCode bookingCode() { return bookingCode; }
+    public TicketDetails ticket() { return ticket; }
+    public LocalDateTime bookingTime() { return bookingTime; }
+    public BigDecimal totalAmount() { return totalAmount; }
+    public BookingStatus status() { return status; }
+    public LocalDateTime expiredAt() { return expiredAt; }
+    public LocalDateTime createdAt() { return createdAt; }
+    public LocalDateTime updatedAt() { return updatedAt; }
+    public List<BookingSeat> seats() { return Collections.unmodifiableList(seats); }
+    public List<BookingCombo> combos() { return Collections.unmodifiableList(combos); }
+
+    /** Optimistic-lock token owned by persistence; the domain never interprets it. */
+    public Integer version() { return version; }
 
     private void releaseSeats(LocalDateTime now) {
         seats.forEach(seat -> seat.release(now));

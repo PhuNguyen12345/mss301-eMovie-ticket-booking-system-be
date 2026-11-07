@@ -1,3 +1,5 @@
 package fu.mss301.booking.domain.booking.event;
 
-public record BookingCancelled(Integer bookingId) {}
+import fu.mss301.booking.domain.shared.DomainEvent;
+
+public record BookingCancelled(Integer bookingId) implements DomainEvent {}

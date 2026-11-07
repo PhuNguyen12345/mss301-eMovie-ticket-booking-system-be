@@ -1,7 +1,7 @@
 # Booking API
 
 Booking Service giữ ghế theo suất chiếu, tạo booking chờ thanh toán, thanh toán qua **PayOS** và xác nhận / hết hạn / hoàn tiền.
-Service được viết theo **Pragmatic DDD** – xem [PRAGMATIC_DDD.md](PRAGMATIC_DDD.md) để hiểu cách tổ chức code.
+Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md) để hiểu cách tổ chức code.
 
 - Port local: `8085` (`SERVER_PORT`). Qua gateway: `http://localhost:8080`.
 - Database: `booking_db` (MySQL, Flyway `V1__init_booking_schema.sql`).
@@ -14,14 +14,22 @@ Service được viết theo **Pragmatic DDD** – xem [PRAGMATIC_DDD.md](PRAGMA
 | --- | --- | --- | --- | --- |
 | GET | `/api/bookings/showtimes/{showtimeId}/seats` | Public | Sơ đồ ghế + trạng thái + giá theo suất chiếu | 200 |
 | POST | `/api/bookings` | Đăng nhập | Giữ ghế, tạo booking `PENDING_PAYMENT` | 201 + `Location` |
+| GET | `/api/bookings?status=&showtimeId=&userId=&code=&from=&to=&page=0&size=10` | ADMIN | Danh sách và tìm kiếm mọi booking (mới nhất trước) | 200 |
 | GET | `/api/bookings/me?page=0&size=10` | Đăng nhập | Lịch sử booking của tôi (mới nhất trước) | 200 |
 | GET | `/api/bookings/{id}` | Chủ booking / ADMIN | Chi tiết booking + lần thanh toán gần nhất | 200 |
 | POST | `/api/bookings/{id}/cancel` | Chủ booking | Hủy booking đang chờ thanh toán, nhả ghế | 200 |
+| PUT | `/api/bookings/{id}/combos` | Chủ booking | Thay toàn bộ combo của booking, tính lại tổng tiền | 200 |
 | POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
 | GET | `/api/payments/refunds?status=PENDING` | ADMIN | Danh sách yêu cầu hoàn tiền | 200 |
 | POST | `/api/payments/refunds/{id}/complete` | ADMIN | Đánh dấu đã hoàn tiền thủ công | 200 |
+| GET | `/api/combos` | Public | Combo đang bán | 200 |
+| GET | `/api/combos/all` | ADMIN | Mọi combo, gồm cả combo đã ngừng bán | 200 |
+| POST | `/api/combos` | ADMIN | Tạo combo | 201 + `Location` |
+| PUT | `/api/combos/{id}` | ADMIN | Sửa tên, mô tả, giá | 200 |
+| POST | `/api/combos/{id}/activate` | ADMIN | Mở bán lại | 200 |
+| POST | `/api/combos/{id}/deactivate` | ADMIN | Ngừng bán | 200 |
 
 ### Mã lỗi chung
 
@@ -91,16 +99,31 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
     "totalAmount": 240000.00,
     "bookingTime": "2027-01-20T18:00:00",
     "expiredAt": "2027-01-20T18:05:00",
+    "ticket": {
+      "movieTitle": "Dune",
+      "moviePosterUrl": "https://example.com/dune.jpg",
+      "startTime": "2027-01-21T19:00:00",
+      "endTime": "2027-01-21T21:30:00",
+      "cinemaName": "Rạp Hà Nội",
+      "screenName": "Phòng chiếu 1"
+    },
     "seats": [
-      {"seatId": 101, "price": 90000.00, "status": "HELD"},
-      {"seatId": 102, "price": 150000.00, "status": "HELD"}
+      {"seatId": 101, "rowCode": "A", "seatNumber": 1, "seatTypeName": "Ghế thường", "price": 90000.00, "status": "HELD"},
+      {"seatId": 102, "rowCode": "C", "seatNumber": 1, "seatTypeName": "Ghế VIP", "price": 150000.00, "status": "HELD"}
     ],
+    "combos": [],
     "payment": null
   }
 }
 ```
 
 Lỗi: `409 "One or more selected seats are no longer available"` khi có người giữ ghế trước.
+
+**Thông tin vé là bản sao lúc giữ ghế.** `ticket`, `rowCode`, `seatNumber`, `seatTypeName` và tên combo không đổi theo danh mục về sau, kể cả khi phim đổi tên hay suất chiếu dời giờ. Vì vậy mọi API đọc booking không gọi service khác, và vẫn chạy khi các service đó lỗi.
+
+Khi giữ ghế, nếu không lấy được thông tin phim, rạp, phòng hoặc loại ghế thì trả 503 và không tạo booking.
+
+Booking tạo trước khi có tính năng này trả `ticket: null`, các field ghế mới cũng `null`. `moviePosterUrl` có thể `null` nếu phim chưa có poster.
 
 ### 2.3 Lịch sử, chi tiết, hủy
 
@@ -146,8 +169,88 @@ Frontend redirect người dùng tới `checkoutUrl`. Sau khi PayOS redirect v�
 
 ### 2.6 Hoàn tiền (ADMIN)
 
-PayOS **không có API hoàn tiền** cho link thanh toán, nên hệ thống chỉ tạo yêu cầu `refunds` trạng thái `PENDING`; nhân viên chuyển khoản
-trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`.
+**Chính sách:** không hoàn tiền cho khách đã mua vé. Khi cần bù cho khách, dùng hình thức trong hệ thống như voucher hoặc điểm.
+
+Bảng `refunds` chỉ dùng cho **lỗi phía hệ thống**, khi tiền đã về nhưng không thể xuất vé:
+
+- Tiền về sau khi booking đã `EXPIRED` hoặc `CANCELLED`.
+- Một booking được thanh toán thành công 2 lần.
+
+Hệ thống tự tạo `refunds` trạng thái `PENDING`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
+
+### 2.7 Combo
+
+**Quản lý combo (ADMIN).** Body của `POST /api/combos` và `PUT /api/combos/{id}`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `name` | string | bắt buộc, tối đa 100 ký tự |
+| `description` | string | tùy chọn, tối đa 255 ký tự |
+| `price` | number | bắt buộc, 1..99.999.999, là số VND nguyên vì PayOS không nhận số lẻ |
+
+```json
+{"id": 5, "name": "Bắp nước", "description": "1 bắp, 1 nước", "price": 85000.00, "status": "ACTIVE"}
+```
+
+Combo mới có trạng thái `ACTIVE`. Ngừng bán chỉ chặn việc thêm mới, không ảnh hưởng booking đã có combo đó.
+
+**Thêm combo vào booking.** `PUT /api/bookings/{id}/combos` thay **toàn bộ** danh sách. Gửi list rỗng để bỏ hết combo.
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `combos` | array | bắt buộc, tối đa 20 phần tử, không trùng combo |
+| `combos[].comboId` | number | bắt buộc, combo phải đang bán |
+| `combos[].quantity` | number | bắt buộc, 1..20 |
+
+```bash
+curl -X PUT http://localhost:8080/api/bookings/42/combos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"combos": [{"comboId": 5, "quantity": 2}]}'
+```
+
+Trả về booking với `totalAmount` = tiền ghế + tiền combo, và danh sách combo. `price` là đơn giá lúc mua:
+
+```json
+{"combos": [{"comboId": 5, "name": "Bắp nước", "quantity": 2, "price": 85000.00}]}
+```
+
+Đổi giá hoặc tên combo sau đó không ảnh hưởng booking đã thêm. Nếu khách sửa lại combo khi đang chờ thanh toán, combo nhận giá và tên hiện tại.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Trùng combo, `quantity` ngoài 1..20, tổng tiền vượt giới hạn |
+| 404 | Booking hoặc combo không tồn tại, booking không thuộc về bạn |
+| 409 | Combo đã ngừng bán; booking không còn `PENDING_PAYMENT` hoặc đã hết giờ giữ ghế; **đã có payment `PENDING`** |
+
+**FE cần thêm combo trước khi tạo link thanh toán.** Link PayOS mang số tiền cố định, nên sau `POST /api/bookings/{id}/payments` không sửa combo được nữa. Nếu tạo link thất bại, payment chuyển `FAILED` và có thể sửa combo rồi thanh toán lại.
+
+### 2.8 Danh sách và tìm kiếm booking (ADMIN)
+
+`GET /api/bookings` trả `PageResponseDTO` chứa `BookingView`, mới nhất trước. Mọi tham số đều tùy chọn và kết hợp với nhau bằng AND. Không truyền tham số nào thì trả tất cả.
+
+| Tham số | Kiểu | Ý nghĩa |
+| --- | --- | --- |
+| `status` | enum | `PENDING_PAYMENT`, `CONFIRMED`, `CANCELLED`, `EXPIRED` |
+| `showtimeId` | number | Theo suất chiếu |
+| `userId` | number | Theo khách |
+| `code` | string | Đúng toàn bộ mã booking, không phân biệt hoa thường |
+| `from` | datetime | `booking_time` từ mốc này, tính cả mốc |
+| `to` | datetime | `booking_time` trước mốc này, không tính mốc |
+| `page` | number | Mặc định 0 |
+| `size` | number | 1..100, mặc định 10 |
+
+`from`, `to` theo định dạng ISO, không có múi giờ, và hiểu theo giờ Việt Nam (`BOOKING_ZONE`). Ví dụ lấy booking trong ngày 20/01/2027:
+
+```bash
+curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:00&to=2027-01-21T00:00:00" \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Sai định dạng tham số, `size` ngoài 1..100, `from` không trước `to` |
+| 401 | Chưa đăng nhập |
+| 403 | Không phải ADMIN |
 
 ## 3. State machine
 
@@ -213,7 +316,7 @@ Nhánh hết hạn (job chạy mỗi `BOOKING_EXPIRY_SCAN_INTERVAL`, mặc đị
 
 1. Lấy các booking `PENDING_PAYMENT` có `expiredAt <= now`.
 2. Hỏi PayOS trạng thái từng link đang mở – nếu thực ra đã `PAID` (webhook bị mất) → đi nhánh thành công.
-3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED` + hủy link PayOS.
+3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED`. Link hủy được thì mới hủy: PayOS tự đóng link đúng giờ hết hạn và từ chối hủy link đã đóng (code `221`).
 
 Nhánh thanh toán trễ: tiền về sau khi booking đã `EXPIRED`/`CANCELLED` → payment vẫn ghi `SUCCESS` (không mất dấu tiền), booking giữ nguyên,
 tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được đưa vào hoàn tiền.
@@ -225,7 +328,7 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | 2 người giữ cùng 1 ghế | `booking_seats.active_flag` = 1 khi `HELD`/`BOOKED`, `NULL` khi `RELEASED`; `UNIQUE (showtime_id, seat_id, active_flag)` → insert thứ 2 fail → 409. MySQL cho phép nhiều `NULL` nên lịch sử ghế đã nhả không chặn lần đặt sau. |
 | Webhook, job hết hạn, người dùng hủy chạy cùng lúc | Load aggregate bằng `SELECT ... FOR UPDATE` + cột `version` (optimistic lock). |
 | PayOS gửi webhook nhiều lần | `markSucceeded()` idempotent; `order_code` unique. |
-| 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event (`@TransactionalEventListener(AFTER_COMMIT)`). |
+| 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event: use case publish qua port `DomainEvents`, listener ở `infrastructure` chạy policy sau commit. |
 | Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. |
 | Webhook không tới | Job hết hạn + endpoint `sync` chủ động hỏi PayOS. |
 | Gọi service khác | Feign gọi **ngoài** transaction DB; timeout 2s/3s; lỗi → 503. |
@@ -241,17 +344,52 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | `BOOKING_MAX_SEATS` | `8` | Số ghế tối đa / booking |
 | `BOOKING_EXPIRY_SCAN_INTERVAL` | `PT30S` | Chu kỳ job hết hạn + đối soát |
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
-| `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
+| `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
-| `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect |
+| `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
+
+Khi chạy bằng `docker-compose`, đặt các biến `PAYOS_*` trong file `.env` ở **thư mục gốc** repo. File `services/booking-service/.env` chỉ có tác dụng khi chạy service trực tiếp, không qua compose. Sau khi sửa `.env`, chạy `docker-compose up -d booking-service` để tạo lại container.
+
+### Return URL và webhook URL
+
+Đây là 2 URL khác nhau, do 2 bên khác nhau gọi tới:
+
+| | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | Webhook URL |
+| --- | --- | --- |
+| Ai gọi | **Trình duyệt của khách**, sau khi rời trang PayOS | **Máy chủ PayOS** |
+| Khai báo ở đâu | `.env` | Kênh thanh toán trên my.payos.vn |
+| Trỏ tới | Trang FE | `https://<gateway>/api/payments/payos/webhook` |
+| Local | `http://localhost:5173/...` dùng được khi khách và FE cùng một máy | Bắt buộc qua tunnel |
+| Deploy | Domain công khai của FE | Domain công khai của gateway |
+
+Vì trình duyệt của khách gọi return URL, không dùng tên service trong Docker như `http://booking-service:8085`.
+
+Trang FE không được tin trạng thái trên query string của return URL. Sau khi redirect về, FE gọi `POST /api/payments/bookings/{bookingId}/sync` hoặc `GET /api/bookings/{id}`.
 
 ### Test PayOS ở local
 
-1. Tạo kênh thanh toán trên https://my.payos.vn, copy Client ID / API Key / Checksum Key vào `services/booking-service/.env` (không commit).
-2. Expose gateway ra internet: `cloudflared tunnel --url http://localhost:8080` (hoặc `ngrok http 8080`).
+1. Tạo kênh thanh toán trên https://my.payos.vn, copy Client ID / API Key / Checksum Key vào `.env` ở thư mục gốc (không commit).
+2. Expose gateway ra internet: `cloudflared tunnel --url http://127.0.0.1:8080`. Dùng `127.0.0.1` thay vì `localhost`, vì `localhost` có thể trỏ tới `::1` và bị reset, trong khi gateway chỉ publish trên `127.0.0.1`.
 3. Khai báo webhook URL `https://<tunnel>/api/payments/payos/webhook` trong kênh thanh toán – PayOS gửi request test, service trả 200.
 4. Đăng nhập lấy JWT → `POST /api/bookings` → `POST /api/bookings/{id}/payments` → mở `checkoutUrl`, quét QR.
 5. Kiểm tra `GET /api/bookings/{id}` = `CONFIRMED`, sơ đồ ghế = `BOOKED`. Để quá TTL mà không trả → `EXPIRED`, ghế về `AVAILABLE`.
+
+### Tài khoản admin khi chạy local
+
+Migration của user-service tạo sẵn `admin@gmail.com`, nhưng mật khẩu không được ghi trong tài liệu. Khi chạy local, hãy tạo một admin riêng trong `user-db` bằng mật khẩu do bạn tự đặt:
+
+```bash
+PW='doi-mat-khau-nay'
+HASH=$(htpasswd -bnBC 10 "" "$PW" | tr -d ':\n' | sed 's/^\$2y/$2a/')
+docker-compose exec -T user-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u "$MYSQL_USER" "$MYSQL_DATABASE"' <<SQL
+INSERT INTO users (full_name, email, password_hash, status, email_verified_at, created_at)
+VALUES ('Local Admin', 'local-admin@example.com', '$HASH', 'ACTIVE', NOW(6), NOW(6));
+INSERT INTO user_roles (user_id, role_id)
+SELECT u.id, r.id FROM users u JOIN roles r ON r.name = 'ADMIN' WHERE u.email = 'local-admin@example.com';
+SQL
+```
+
+Sau đó đăng nhập bằng `POST /api/auth/login`. Chỉ dùng cách này ở môi trường local. `htpasswd` có sẵn trên macOS; trên Linux, cài gói `apache2-utils`.
 
 ### Chạy test
 
@@ -266,42 +404,27 @@ docker run -d --rm --name booking-test-db -p 127.0.0.1:33099:3306 \
 BOOKING_TEST_DB_URL=jdbc:mysql://127.0.0.1:33099/booking_test ./mvnw -pl services/booking-service -am test
 ```
 
-## 7. Contract cần các service khác cung cấp
+## 7. API phụ thuộc từ service khác
 
-Booking gọi qua OpenFeign (`infrastructure/client`). Hai endpoint dưới **chưa tồn tại** – đây là contract đề xuất cho team cinema/showtime.
+Booking gọi qua OpenFeign (`infrastructure/client`), chỉ khi xem sơ đồ ghế và khi giữ ghế. Mọi endpoint dưới đây đều đã có.
 
-**Cinema Service** – `GET /api/screens/{screenId}/seats` (bắt buộc để giữ ghế):
+| Service | Endpoint | Field booking dùng | Dùng để |
+| --- | --- | --- | --- |
+| Showtime | `GET /api/showtimes/{id}` | `id`, `movieId`, `cinemaId`, `screenId`, `startTime`, `endTime`, `basePrice`, `status` | Kiểm tra suất chiếu còn mở bán, lấy phòng, giá gốc và thông tin vé |
+| Showtime | `GET /api/showtimes/{id}/seat-prices` | `id`, `seatTypeId`, `price` | Giá theo loại ghế |
+| Cinema | `GET /api/screens/{screenId}/seats` | `id`, `screenId`, `rowCode`, `seatNumber`, `seatTypeId`, `status` | Sơ đồ ghế vật lý |
+| Movie | `GET /api/movies/{id}` | `title`, `posterUrl` | Thông tin vé |
+| Cinema | `GET /api/cinemas/{id}`, `GET /api/screens/{id}` | `name` | Thông tin vé |
+| Cinema | `GET /api/seat-types` | `id`, `name` | Tên loại ghế trên vé |
 
-```json
-{
-  "status": 200,
-  "data": [
-    {"id": 101, "screenId": 3, "rowCode": "A", "seatNumber": 1, "seatTypeId": 1, "status": "ACTIVE"}
-  ]
-}
-```
-
-`status` khác `ACTIVE` (ví dụ `MAINTENANCE`) → ghế hiển thị `UNAVAILABLE`, không giữ được.
-
-**Showtime Service** – `GET /api/showtimes/{id}/seat-prices` (tùy chọn, bảng `showtime_seat_prices` trong ERD):
-
-```json
-{
-  "status": 200,
-  "data": [
-    {"id": 77, "seatTypeId": 2, "price": 150000}
-  ]
-}
-```
-
-Nếu endpoint trả 404 (chưa làm) → mọi ghế dùng `basePrice`. `id` được lưu vào `booking_seats.showtime_seat_id`.
-
-Booking cũng dùng `GET /api/showtimes/{id}` hiện có (cần các field `id`, `screenId`, `startTime`, `basePrice`, `status`).
+- Ghế có `status` khác `ACTIVE`, ví dụ `MAINTENANCE`, hiển thị `UNAVAILABLE` và không giữ được.
+- Loại ghế không có giá riêng thì dùng `basePrice`. Nếu có giá riêng, `id` của dòng giá được lưu vào `booking_seats.showtime_seat_id`.
+- Suất chiếu không tồn tại thì booking trả 404. Service phụ thuộc lỗi hoặc không phản hồi thì booking trả 503.
 
 ## 8. Schema `booking_db` và điểm khác ERD
 
 Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transactions`, `refunds`, `combos`, `booking_combos`, `vouchers`, `user_vouchers`
-(combo/voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
+(voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
 
 | Bảng.cột | Lý do |
 | --- | --- |
@@ -311,5 +434,10 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `booking_seats.active_flag` (generated) | Chỉ ghế `HELD`/`BOOKED` tham gia unique index |
 | `payment_transactions.order_code` | `orderCode` số nguyên PayOS yêu cầu, unique, dùng tra cứu khi nhận webhook |
 | `payment_transactions.payment_link_id`, `checkout_url` | Lấy lại link đang mở thay vì tạo link mới |
+| `bookings.movie_title`, `movie_poster_url`, `start_time`, `end_time`, `cinema_name`, `screen_name` | Bản sao thông tin vé lúc giữ ghế. `NULL` với booking cũ |
+| `booking_seats.row_code`, `seat_number`, `seat_type_name` | Bản sao thông tin ghế. `NULL` với booking cũ |
+| `booking_combos.combo_name` | Giữ tên combo lúc mua |
+
+`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
 
 `payment_transactions.provider_transaction_id` giữ đúng nghĩa ERD: mã giao dịch ngân hàng (`reference`) PayOS trả về khi thanh toán thành công.

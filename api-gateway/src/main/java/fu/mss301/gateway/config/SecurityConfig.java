@@ -61,7 +61,11 @@ public class SecurityConfig {
                 // PayOS calls the webhook without a JWT; booking-service verifies the checksum signature instead.
                 .pathMatchers(HttpMethod.POST, "/api/payments/payos/webhook").permitAll()
                 .pathMatchers(HttpMethod.GET, "/api/bookings/showtimes/*/seats").permitAll()
+                // Listing every booking is for admins; customers still use POST here and everything under this path.
+                .pathMatchers(HttpMethod.GET, "/api/bookings").hasRole("ADMIN")
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
+                .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
+                .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
                 .pathMatchers("/api/users/me", "/api/users/me/**", "/api/bookings/**", "/api/payments/**").authenticated()
                 .pathMatchers("/api/users/**").hasRole("ADMIN")
                 .anyExchange().denyAll())
