@@ -35,7 +35,7 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 
 | HTTP | Khi nào |
 | --- | --- |
-| 400 | Body/param sai, vi phạm quy tắc domain (`DomainException`: 0 ghế, trùng ghế, quá `BOOKING_MAX_SEATS`, ghế không thuộc phòng...), webhook sai chữ ký |
+| 400 | Body/param sai, vi phạm quy tắc domain (`DomainException`: 0 ghế, trùng ghế, quá `BOOKING_MAX_SEATS`, ghế không thuộc phòng...), webhook thiếu hoặc sai chữ ký |
 | 401 | Thiếu / sai `X-User-Id` (chưa đăng nhập) |
 | 403 | Endpoint ADMIN nhưng user không có role `ADMIN` |
 | 404 | Booking không tồn tại **hoặc không thuộc về bạn** (không lộ id của người khác), showtime không tồn tại |
@@ -163,7 +163,7 @@ Frontend redirect người dùng tới `checkoutUrl`. Sau khi PayOS redirect v�
 
 `POST /api/payments/payos/webhook` – PayOS gọi, không có JWT. Service verify `signature` (HMAC-SHA256 bằng `PAYOS_CHECKSUM_KEY`).
 
-- Chữ ký sai → `400`.
+- Thiếu `data`, thiếu `signature` hoặc chữ ký sai → `400`.
 - Chữ ký đúng → luôn `200` (kể cả `orderCode` lạ, ví dụ request test khi PayOS xác minh webhook URL).
 - Idempotent: PayOS gửi lại nhiều lần không làm thay đổi kết quả.
 
