@@ -6,13 +6,18 @@ import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.domain.booking.SeatAlreadyTakenException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Repository
+@Transactional(propagation = Propagation.MANDATORY)
 class JpaBookingRepository implements BookingRepository {
     private final BookingJpaRepository jpa;
 
@@ -22,9 +27,18 @@ class JpaBookingRepository implements BookingRepository {
 
     @Override
     public Booking save(Booking booking) {
-        // Spring Data publishes the aggregate's registered events on save().
+        BookingEntity entity;
+        if (booking.id() == null) {
+            entity = BookingMapper.newEntity(booking);
+        } else {
+            entity = jpa.findById(booking.id()).orElseThrow();
+            if (!Objects.equals(entity.getVersion(), booking.version())) {
+                throw new ObjectOptimisticLockingFailureException(BookingEntity.class, booking.id());
+            }
+            BookingMapper.update(booking, entity);
+        }
         try {
-            return jpa.saveAndFlush(booking);
+            return BookingMapper.toDomain(jpa.saveAndFlush(entity));
         } catch (DataIntegrityViolationException exception) {
             // uq_booking_seats_active: another booking holds or owns one of these seats.
             throw new SeatAlreadyTakenException();
@@ -33,12 +47,12 @@ class JpaBookingRepository implements BookingRepository {
 
     @Override
     public Optional<Booking> findById(Integer id) {
-        return jpa.findById(id);
+        return jpa.findById(id).map(BookingMapper::toDomain);
     }
 
     @Override
     public Optional<Booking> findByIdForUpdate(Integer id) {
-        return jpa.lockById(id);
+        return jpa.lockById(id).map(BookingMapper::toDomain);
     }
 
     @Override

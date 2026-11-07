@@ -68,17 +68,17 @@ public class InitiatePaymentUseCase {
         var open = payments.findPendingByBookingIdForUpdate(bookingId);
         if (!open.isEmpty()) {
             var current = open.getFirst();
-            if (current.getCheckoutUrl() == null) {
+            if (current.checkoutUrl() == null) {
                 throw new InvalidStateTransitionException("A payment link is already being created for this booking");
             }
             return new Draft(PaymentView.of(current), null, 0, 0, null);
         }
         long attempt = payments.countByBookingId(bookingId) + 1;
         if (attempt > MAX_ATTEMPTS) throw new InvalidStateTransitionException("Too many payment attempts for this booking");
-        long amount = wholeVnd(booking.getTotalAmount());
-        var payment = payments.save(PaymentTransaction.initiate(bookingId, booking.getTotalAmount(),
+        long amount = wholeVnd(booking.totalAmount());
+        var payment = payments.save(PaymentTransaction.initiate(bookingId, booking.totalAmount(),
             bookingId * 100L + attempt, now));
-        return new Draft(null, payment.getId(), payment.getOrderCode(), amount, booking.getExpiredAt());
+        return new Draft(null, payment.id(), payment.orderCode(), amount, booking.expiredAt());
     }
 
     private static long wholeVnd(BigDecimal amount) {

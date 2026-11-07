@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 public record RefundView(Integer id, Integer paymentId, Integer bookingId, Long orderCode, BigDecimal amount,
                          String reason, RefundStatus status, LocalDateTime createdAt, LocalDateTime refundedAt) {
     public static RefundView of(PaymentTransaction payment, Refund refund) {
-        return new RefundView(refund.getId(), payment.getId(), payment.getBookingId(), payment.getOrderCode(),
-            refund.getAmount(), refund.getReason(), refund.getStatus(), refund.getCreatedAt(), refund.getRefundedAt());
+        return new RefundView(refund.id(), payment.id(), payment.bookingId(), payment.orderCode(),
+            refund.amount(), refund.reason(), refund.status(), refund.createdAt(), refund.refundedAt());
     }
 }

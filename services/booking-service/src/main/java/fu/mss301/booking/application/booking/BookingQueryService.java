@@ -41,7 +41,7 @@ public class BookingQueryService {
     }
 
     private PaymentTransaction latestPayment(Booking booking) {
-        return payments.findByBookingId(booking.getId()).stream()
-            .max(Comparator.comparing(PaymentTransaction::getId)).orElse(null);
+        return payments.findByBookingId(booking.id()).stream()
+            .max(Comparator.comparing(PaymentTransaction::id)).orElse(null);
     }
 }

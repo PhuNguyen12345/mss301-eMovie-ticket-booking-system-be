@@ -1,57 +1,39 @@
 package fu.mss301.booking.domain.payment;
 
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
-import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /** Child entity of {@link PaymentTransaction}; created and completed only through the root. */
-@Entity
-@Table(name = "refunds")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Refund {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "payment_id", nullable = false, updatable = false)
-    @Getter(AccessLevel.NONE)
-    private PaymentTransaction payment;
-
-    @Column(name = "amount", nullable = false, updatable = false, precision = 10, scale = 2)
-    private BigDecimal amount;
-
-    @Column(name = "reason")
-    private String reason;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+public final class Refund {
+    private final Integer id;
+    private final BigDecimal amount;
+    private final String reason;
     private RefundStatus status;
-
-    @Column(name = "refunded_at")
     private LocalDateTime refundedAt;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
+    private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    static Refund request(PaymentTransaction payment, BigDecimal amount, String reason, LocalDateTime now) {
-        Refund refund = new Refund();
-        refund.payment = payment;
-        refund.amount = amount;
-        refund.reason = reason;
-        refund.status = RefundStatus.PENDING;
-        refund.createdAt = now;
-        refund.updatedAt = now;
-        return refund;
+    private Refund(Integer id, BigDecimal amount, String reason, RefundStatus status, LocalDateTime refundedAt,
+                   LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this.id = id;
+        this.amount = amount;
+        this.reason = reason;
+        this.status = status;
+        this.refundedAt = refundedAt;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    static Refund request(BigDecimal amount, String reason, LocalDateTime now) {
+        return new Refund(null, amount, reason, RefundStatus.PENDING, null, now, now);
+    }
+
+    /** Rebuilds a stored refund; performs no business validation. */
+    public static Refund restore(Integer id, BigDecimal amount, String reason, RefundStatus status,
+                                 LocalDateTime refundedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        return new Refund(id, amount, reason, status, refundedAt, createdAt, updatedAt);
     }
 
     void complete(LocalDateTime now) {
@@ -66,4 +48,12 @@ public class Refund {
     boolean isOpenOrDone() {
         return status != RefundStatus.REJECTED;
     }
+
+    public Integer id() { return id; }
+    public BigDecimal amount() { return amount; }
+    public String reason() { return reason; }
+    public RefundStatus status() { return status; }
+    public LocalDateTime refundedAt() { return refundedAt; }
+    public LocalDateTime createdAt() { return createdAt; }
+    public LocalDateTime updatedAt() { return updatedAt; }
 }

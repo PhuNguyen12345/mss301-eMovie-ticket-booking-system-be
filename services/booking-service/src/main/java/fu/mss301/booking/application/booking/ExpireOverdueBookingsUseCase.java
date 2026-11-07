@@ -1,5 +1,6 @@
 package fu.mss301.booking.application.booking;
 
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
 import fu.mss301.booking.domain.booking.BookingRepository;
@@ -15,13 +16,15 @@ public class ExpireOverdueBookingsUseCase {
     private final BookingRepository bookings;
     private final ReconcilePaymentUseCase reconciliation;
     private final Transactions transactions;
+    private final DomainEvents events;
     private final Clock clock;
 
     public ExpireOverdueBookingsUseCase(BookingRepository bookings, ReconcilePaymentUseCase reconciliation,
-                                        Transactions transactions, Clock clock) {
+                                        Transactions transactions, DomainEvents events, Clock clock) {
         this.bookings = bookings;
         this.reconciliation = reconciliation;
         this.transactions = transactions;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -44,11 +47,12 @@ public class ExpireOverdueBookingsUseCase {
     private boolean expireOne(Integer bookingId) {
         LocalDateTime now = LocalDateTime.now(clock);
         var booking = bookings.findByIdForUpdate(bookingId).orElse(null);
-        if (booking == null || booking.getStatus() != BookingStatus.PENDING_PAYMENT || now.isBefore(booking.getExpiredAt())) {
+        if (booking == null || booking.status() != BookingStatus.PENDING_PAYMENT || now.isBefore(booking.expiredAt())) {
             return false;
         }
         booking.expire(now);
         bookings.save(booking);
+        events.publish(booking.pullEvents());
         return true;
     }
 }

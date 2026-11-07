@@ -8,11 +8,14 @@ import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumSet;
 import java.util.List;
 
 @Repository
+@Transactional(propagation = Propagation.MANDATORY)
 class JpaBookingQueries implements BookingQueries {
     private final BookingJpaRepository jpa;
 
@@ -23,7 +26,7 @@ class JpaBookingQueries implements BookingQueries {
     @Override
     public BookingPage<Booking> findByUser(Integer userId, int page, int size) {
         var result = jpa.findByUserId(userId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
-        return new BookingPage<>(result.getContent(), result.getNumber(), result.getSize(), result.getTotalElements(),
+        return new BookingPage<>(result.getContent().stream().map(BookingMapper::toDomain).toList(), result.getNumber(), result.getSize(), result.getTotalElements(),
             result.getTotalPages(), result.isFirst(), result.isLast());
     }
 

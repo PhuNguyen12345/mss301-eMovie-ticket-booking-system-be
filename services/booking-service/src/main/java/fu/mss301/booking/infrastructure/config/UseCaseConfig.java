@@ -11,7 +11,10 @@ import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentSettlementService;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
 import fu.mss301.booking.application.payment.RefundAdminUseCase;
+import fu.mss301.booking.application.policy.BookingEventPolicy;
+import fu.mss301.booking.application.policy.PaymentEventPolicy;
 import fu.mss301.booking.application.port.BookingQueries;
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.SeatLayoutProvider;
 import fu.mss301.booking.application.port.ShowtimeCatalog;
@@ -46,15 +49,17 @@ public class UseCaseConfig {
     }
 
     @Bean
-    CancelBookingUseCase cancelBookingUseCase(BookingRepository bookings, Transactions transactions, Clock clock) {
-        return new CancelBookingUseCase(bookings, transactions, clock);
+    CancelBookingUseCase cancelBookingUseCase(BookingRepository bookings, Transactions transactions, DomainEvents events,
+                                              Clock clock) {
+        return new CancelBookingUseCase(bookings, transactions, events, clock);
     }
 
     @Bean
     ExpireOverdueBookingsUseCase expireOverdueBookingsUseCase(BookingRepository bookings,
                                                               ReconcilePaymentUseCase reconciliation,
-                                                              Transactions transactions, Clock clock) {
-        return new ExpireOverdueBookingsUseCase(bookings, reconciliation, transactions, clock);
+                                                              Transactions transactions, DomainEvents events,
+                                                              Clock clock) {
+        return new ExpireOverdueBookingsUseCase(bookings, reconciliation, transactions, events, clock);
     }
 
     @Bean
@@ -65,8 +70,8 @@ public class UseCaseConfig {
 
     @Bean
     PaymentSettlementService paymentSettlementService(PaymentRepository payments, BookingRepository bookings,
-                                                      Transactions transactions, Clock clock) {
-        return new PaymentSettlementService(payments, bookings, transactions, clock);
+                                                      Transactions transactions, DomainEvents events, Clock clock) {
+        return new PaymentSettlementService(payments, bookings, transactions, events, clock);
     }
 
     @Bean
@@ -79,6 +84,17 @@ public class UseCaseConfig {
                                                     PaymentSettlementService settlement,
                                                     BookingQueryService bookingQueries, Transactions transactions) {
         return new ReconcilePaymentUseCase(payments, gateway, settlement, bookingQueries, transactions);
+    }
+
+    @Bean
+    BookingEventPolicy bookingEventPolicy(PaymentRepository payments, PaymentGateway gateway, Transactions transactions,
+                                          Clock clock) {
+        return new BookingEventPolicy(payments, gateway, transactions, clock);
+    }
+
+    @Bean
+    PaymentEventPolicy paymentEventPolicy(PaymentSettlementService settlement) {
+        return new PaymentEventPolicy(settlement);
     }
 
     @Bean

@@ -42,15 +42,15 @@ public class ReconcilePaymentUseCase {
         boolean paid = false;
         // Snapshot first: PayOS is called outside any transaction.
         for (PaymentTransaction payment : transactions.read(() -> payments.findByBookingId(bookingId))) {
-            if (!payment.isPending() || payment.getCheckoutUrl() == null) continue;
+            if (!payment.isPending() || payment.checkoutUrl() == null) continue;
             try {
-                var state = gateway.getLinkState(payment.getOrderCode());
+                var state = gateway.getLinkState(payment.orderCode());
                 if (state.status() == LinkStatus.PAID) {
-                    paid |= settlement.recordSuccess(payment.getOrderCode(), state.amountPaid(), state.reference(),
+                    paid |= settlement.recordSuccess(payment.orderCode(), state.amountPaid(), state.reference(),
                         state.paidAt());
                 }
             } catch (PaymentGatewayException exception) {
-                log.log(Level.WARNING, () -> "Could not reconcile order " + payment.getOrderCode() + " with PayOS: "
+                log.log(Level.WARNING, () -> "Could not reconcile order " + payment.orderCode() + " with PayOS: "
                     + exception.getMessage());
             }
         }
@@ -61,9 +61,9 @@ public class ReconcilePaymentUseCase {
     public void settleUnsettled(int limit) {
         for (PaymentTransaction payment : transactions.read(() -> payments.findUnsettledSuccessful(limit))) {
             try {
-                settlement.settle(payment.getId(), payment.getBookingId());
+                settlement.settle(payment.id(), payment.bookingId());
             } catch (RuntimeException exception) {
-                log.log(Level.WARNING, () -> "Could not settle payment " + payment.getId() + ": " + exception.getMessage());
+                log.log(Level.WARNING, () -> "Could not settle payment " + payment.id() + ": " + exception.getMessage());
             }
         }
     }

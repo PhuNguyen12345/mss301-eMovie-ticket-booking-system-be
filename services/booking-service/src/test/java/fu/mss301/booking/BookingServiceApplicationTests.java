@@ -11,6 +11,7 @@ import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.RefundAdminUseCase;
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.PaymentGateway.CheckoutLink;
 import fu.mss301.booking.application.port.PaymentGateway.LinkState;
@@ -21,8 +22,11 @@ import fu.mss301.booking.application.port.SeatLayoutProvider.PhysicalSeat;
 import fu.mss301.booking.application.port.ShowtimeCatalog;
 import fu.mss301.booking.application.port.ShowtimeCatalog.SeatTypePrice;
 import fu.mss301.booking.application.port.ShowtimeCatalog.ShowtimeSnapshot;
+import fu.mss301.booking.application.port.Transactions;
+import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.domain.booking.SeatHoldStatus;
+import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.payment.PaymentStatus;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +37,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
@@ -75,6 +81,10 @@ class BookingServiceApplicationTests {
     @Autowired private HandlePayosWebhookUseCase webhook;
     @Autowired private RefundAdminUseCase refunds;
     @Autowired private MutableClock clock;
+    @Autowired private BookingRepository repository;
+    @Autowired private Transactions transactions;
+    @Autowired private DomainEvents domainEvents;
+    @Autowired private JdbcTemplate jdbc;
 
     @MockitoBean private ShowtimeCatalog showtimes;
     @MockitoBean private SeatLayoutProvider seatLayout;
@@ -200,6 +210,80 @@ class BookingServiceApplicationTests {
         assertEquals(Availability.AVAILABLE, availability(102));
         assertThrows(BookingNotFoundException.class, () -> queries.getBooking(8, false, booking.id()));
         assertNotNull(queries.getBooking(8, true, booking.id()));
+    }
+
+    @Test
+    void childRowsKeepTheirIdsAcrossStateChanges() {
+        var booking = holdSeats.hold(7, showtimeId, List.of(101, 102));
+        var seatIds = seatRowIds(booking.id());
+        assertEquals(2, seatIds.size());
+        var payment = initiatePayment.initiate(7, booking.id());
+        when(gateway.verifyWebhook(any())).thenReturn(
+            new VerifiedPayment(payment.orderCode(), 240000, true, "FT4", LocalDateTime.now(clock)));
+        webhook.handle(Map.of());
+        assertEquals(seatIds, seatRowIds(booking.id()));
+
+    }
+
+    @Test
+    void refundRowKeepsItsIdWhenCompleted() {
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        var payment = initiatePayment.initiate(7, booking.id());
+        clock.advance(Duration.ofMinutes(6));
+        expireOverdue.expireOverdue(1000);
+        when(gateway.verifyWebhook(any())).thenReturn(
+            new VerifiedPayment(payment.orderCode(), 90000, true, "FT5", LocalDateTime.now(clock)));
+        webhook.handle(Map.of());
+
+        var refund = refunds.list(RefundStatus.PENDING).stream()
+            .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
+        assertNotNull(refund.id());
+        assertEquals(refund.id(), refunds.complete(refund.id()).id());
+        assertTrue(refunds.list(RefundStatus.COMPLETED).stream().anyMatch(r -> r.id().equals(refund.id())));
+    }
+
+    @Test
+    void cancelFailsThePendingPaymentAndClosesItsLink() {
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        var payment = initiatePayment.initiate(7, booking.id());
+        cancelBooking.cancel(7, booking.id());
+        assertEquals(PaymentStatus.FAILED, queries.getBooking(7, false, booking.id()).payment().status());
+        verify(gateway).cancelLink(eq(payment.orderCode()), anyString());
+    }
+
+    @Test
+    void savingAStaleAggregateIsRejected() {
+        var booking = holdSeats.hold(7, showtimeId, List.of(101));
+        var stale = transactions.read(() -> repository.findById(booking.id())).orElseThrow();
+        cancelBooking.cancel(7, booking.id());
+
+        stale.cancelBy(7, LocalDateTime.now(clock));
+        assertThrows(OptimisticLockingFailureException.class, () -> transactions.write(() -> repository.save(stale)));
+        assertEquals(BookingStatus.CANCELLED, queries.getBooking(7, false, booking.id()).status());
+    }
+
+    @Test
+    void myBookingsAreNewestFirstAndPaged() {
+        int userId = 500_000 + (int) (showtimeId % 1_000_000);
+        var first = holdSeats.hold(userId, showtimeId, List.of(101));
+        var second = holdSeats.hold(userId, showtimeId, List.of(102));
+
+        var page = queries.myBookings(userId, 0, 1);
+        assertEquals(List.of(second.id()), page.content().stream().map(b -> b.id()).toList());
+        assertEquals(2, page.totalElements());
+        assertEquals(2, page.totalPages());
+        assertTrue(page.first());
+        assertFalse(page.last());
+        assertEquals(List.of(first.id()), queries.myBookings(userId, 1, 1).content().stream().map(b -> b.id()).toList());
+    }
+
+    @Test
+    void publishingEventsOutsideATransactionFailsLoudly() {
+        assertThrows(IllegalStateException.class, () -> domainEvents.publish(List.of(new BookingCancelled(1))));
+    }
+
+    private List<Integer> seatRowIds(Integer bookingId) {
+        return jdbc.queryForList("select id from booking_seats where booking_id = ? order by id", Integer.class, bookingId);
     }
 
     private Availability availability(int seatId) {

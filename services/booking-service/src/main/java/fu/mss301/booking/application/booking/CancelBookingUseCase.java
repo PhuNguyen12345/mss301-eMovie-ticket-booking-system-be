@@ -1,6 +1,7 @@
 package fu.mss301.booking.application.booking;
 
 import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.BookingRepository;
 
@@ -11,11 +12,14 @@ import java.time.LocalDateTime;
 public class CancelBookingUseCase {
     private final BookingRepository bookings;
     private final Transactions transactions;
+    private final DomainEvents events;
     private final Clock clock;
 
-    public CancelBookingUseCase(BookingRepository bookings, Transactions transactions, Clock clock) {
+    public CancelBookingUseCase(BookingRepository bookings, Transactions transactions, DomainEvents events,
+                                Clock clock) {
         this.bookings = bookings;
         this.transactions = transactions;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -24,7 +28,9 @@ public class CancelBookingUseCase {
             var booking = bookings.findByIdForUpdate(bookingId).filter(b -> b.isOwnedBy(userId))
                 .orElseThrow(BookingNotFoundException::new);
             booking.cancelBy(userId, LocalDateTime.now(clock));
-            return BookingView.of(bookings.save(booking), null);
+            var saved = bookings.save(booking);
+            events.publish(booking.pullEvents());
+            return BookingView.of(saved, null);
         });
     }
 }

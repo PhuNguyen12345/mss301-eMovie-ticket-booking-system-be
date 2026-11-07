@@ -5,9 +5,6 @@ import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
 import fu.mss301.booking.domain.payment.PaymentRepository;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.lang.System.Logger.Level;
 import java.time.Clock;
@@ -15,7 +12,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /** Booking released its seats -> close its open payment attempts and their PayOS links. */
-@Component
 public class BookingEventPolicy {
     private static final System.Logger log = System.getLogger(BookingEventPolicy.class.getName());
     private final PaymentRepository payments;
@@ -30,12 +26,10 @@ public class BookingEventPolicy {
         this.clock = clock;
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(BookingExpired event) {
         closeOpenPayments(event.bookingId(), "Booking hold expired");
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(BookingCancelled event) {
         closeOpenPayments(event.bookingId(), "Booking cancelled by customer");
     }
@@ -46,7 +40,7 @@ public class BookingEventPolicy {
                 .filter(payment -> payment.markFailed(LocalDateTime.now(clock)))
                 .map(payment -> {
                     payments.save(payment);
-                    return payment.getCheckoutUrl() == null ? null : payment.getOrderCode();
+                    return payment.checkoutUrl() == null ? null : payment.orderCode();
                 })
                 .filter(java.util.Objects::nonNull).toList());
             for (Long orderCode : openLinks) {

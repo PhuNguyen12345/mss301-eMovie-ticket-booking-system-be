@@ -25,10 +25,10 @@ public record BookingView(
     public record SeatLine(Integer seatId, BigDecimal price, SeatHoldStatus status) {}
 
     public static BookingView of(Booking booking, PaymentTransaction latestPayment) {
-        return new BookingView(booking.getId(), booking.getBookingCode().value(), booking.getUserId(),
-            booking.getShowtimeId(), booking.getStatus(), booking.getTotalAmount(), booking.getBookingTime(),
-            booking.getExpiredAt(),
-            booking.getSeats().stream().map(s -> new SeatLine(s.getSeatId(), s.getPrice(), s.getStatus())).toList(),
+        return new BookingView(booking.id(), booking.bookingCode().value(), booking.userId(),
+            booking.showtimeId(), booking.status(), booking.totalAmount(), booking.bookingTime(),
+            booking.expiredAt(),
+            booking.seats().stream().map(s -> new SeatLine(s.seatId(), s.price(), s.status())).toList(),
             latestPayment == null ? null : PaymentView.of(latestPayment));
     }
 }

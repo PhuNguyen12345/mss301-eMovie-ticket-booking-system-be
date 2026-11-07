@@ -23,8 +23,8 @@ public class RefundAdminUseCase {
 
     public List<RefundView> list(RefundStatus status) {
         return transactions.read(() -> payments.findWithRefundStatus(status).stream()
-            .flatMap(payment -> payment.getRefunds().stream()
-                .filter(refund -> refund.getStatus() == status)
+            .flatMap(payment -> payment.refunds().stream()
+                .filter(refund -> refund.status() == status)
                 .map(refund -> RefundView.of(payment, refund)))
             .toList());
     }
@@ -35,7 +35,7 @@ public class RefundAdminUseCase {
                 .orElseThrow(RefundNotFoundException::new);
             payment.completeRefund(refundId, LocalDateTime.now(clock));
             var saved = payments.save(payment);
-            return saved.getRefunds().stream().filter(r -> r.getId().equals(refundId))
+            return saved.refunds().stream().filter(r -> r.id().equals(refundId))
                 .map(r -> RefundView.of(saved, r)).findFirst().orElseThrow();
         });
     }
