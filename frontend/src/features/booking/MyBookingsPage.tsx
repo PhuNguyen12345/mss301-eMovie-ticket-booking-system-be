@@ -7,8 +7,7 @@ import {
 } from "../../components/ui/Feedback";
 import { Pagination } from "../../components/ui/Pagination";
 import { useMyBookings } from "./hooks";
-import { BookingStatus } from "./BookingStatus";
-import { formatDate, formatMoney } from "../../lib/date";
+import { BookingCard } from "./BookingCard";
 export function MyBookingsPage() {
   return (
     <AccessGate>
@@ -46,24 +45,7 @@ function BookingList() {
         <>
           <div className="booking-list">
             {query.data.data.map((booking) => (
-              <Link
-                key={booking.id}
-                to={`/bookings/${booking.id}`}
-                className="booking-card"
-              >
-                <div>
-                  <BookingStatus status={booking.status} />
-                  <h2>{booking.bookingCode}</h2>
-                  <p className="muted">
-                    Suất chiếu #{booking.showtimeId} · {booking.seats.length}{" "}
-                    ghế · Đặt ngày {formatDate(booking.bookingTime)}
-                  </p>
-                </div>
-                <div>
-                  <strong>{formatMoney(booking.totalAmount)}</strong>
-                  <span className="text-link">Xem chi tiết →</span>
-                </div>
-              </Link>
+              <BookingCard key={booking.id} booking={booking} />
             ))}
           </div>
           {!query.data.data.length && (

@@ -9,6 +9,8 @@ import {
   EmptyState,
 } from "../../components/ui/Feedback";
 import { Placeholder } from "../../components/ui/Placeholder";
+import { BookingCombos } from "../combos/BookingCombos";
+import { VenueName } from "../cinema/VenueName";
 import {
   useBooking,
   useBookingActions,
@@ -20,7 +22,7 @@ import { BookingStatus } from "./BookingStatus";
 import { type Booking, paymentUrl } from "./api";
 import { formatDate, formatMoney, formatTime } from "../../lib/date";
 import { useCountdown } from "../../lib/useCountdown";
-import { useServices } from "../../app/ServicesProvider";
+import { useServices, useSession } from "../../app/ServicesProvider";
 export function BookingPage() {
   const id = Number(useParams().bookingId);
   return (
@@ -109,8 +111,15 @@ function BookingContent({
   stale: boolean;
 }) {
   const { session } = useServices();
-  const show = useBookingShowtime(booking.showtimeId);
-  const seatMap = useSeatMap(booking.showtimeId, false);
+  const { current } = useSession();
+  const isOwner = current?.user.userId === booking.userId;
+  const show = useBookingShowtime(booking.ticket ? 0 : booking.showtimeId);
+  const seatMap = useSeatMap(
+    booking.seats.every((s) => s.rowCode && s.seatNumber)
+      ? 0
+      : booking.showtimeId,
+    false,
+  );
   const movie = useMovie(show.data?.movieId ?? 0);
   const timer = useCountdown(
     booking.status === "PENDING_PAYMENT" ? booking.expiredAt : undefined,
@@ -137,13 +146,28 @@ function BookingContent({
           <BookingStatus status={booking.status} />
           <span className="muted">#{booking.id}</span>
         </div>
-        <h2>{movie.data?.title || `Suất chiếu #${booking.showtimeId}`}</h2>
-        {show.data && (
+        <h2>
+          {booking.ticket?.movieTitle ||
+            movie.data?.title ||
+            `Suất chiếu #${booking.showtimeId}`}
+        </h2>
+        {booking.ticket ? (
           <p className="muted">
-            {formatDate(show.data.startTime)} ·{" "}
-            {formatTime(show.data.startTime)} · Rạp #{show.data.cinemaId} ·
-            Phòng #{show.data.screenId}
+            {formatDate(booking.ticket.startTime)} ·{" "}
+            {formatTime(booking.ticket.startTime)} · {booking.ticket.cinemaName}{" "}
+            · {booking.ticket.screenName}
           </p>
+        ) : (
+          show.data && (
+            <p className="muted">
+              {formatDate(show.data.startTime)} ·{" "}
+              {formatTime(show.data.startTime)} ·{" "}
+              <VenueName
+                cinemaId={show.data.cinemaId}
+                screenId={show.data.screenId}
+              />
+            </p>
+          )
         )}
         <div className="booking-reference">
           <span>Mã đặt vé</span>
@@ -158,14 +182,25 @@ function BookingContent({
               <div key={seat.seatId}>
                 <dt>
                   Ghế{" "}
-                  {physical
-                    ? `${physical.rowCode}${physical.seatNumber}`
-                    : `#${seat.seatId}`}
+                  {seat.rowCode && seat.seatNumber
+                    ? `${seat.rowCode}${seat.seatNumber}`
+                    : physical
+                      ? `${physical.rowCode}${physical.seatNumber}`
+                      : `#${seat.seatId}`}
+                  {seat.seatTypeName ? ` · ${seat.seatTypeName}` : ""}
                 </dt>
                 <dd>{formatMoney(seat.price)}</dd>
               </div>
             );
           })}
+          {booking.combos?.map((combo) => (
+            <div key={combo.comboId}>
+              <dt>
+                {combo.name} × {combo.quantity}
+              </dt>
+              <dd>{formatMoney(combo.price * combo.quantity)}</dd>
+            </div>
+          ))}
           <div className="total">
             <dt>Tổng tiền</dt>
             <dd>{formatMoney(booking.totalAmount)}</dd>
@@ -203,13 +238,13 @@ function BookingContent({
           )}
         <Placeholder
           compact
-          title="Vé điện tử & soát vé"
+          title="Soát vé tại rạp"
           description="Chức năng xác thực vé tại rạp đang được bổ sung."
         />
       </section>
       <aside className="surface order-summary">
         <h2>{pending ? "Hoàn tất thanh toán" : "Trạng thái giao dịch"}</h2>
-        {pending && (
+        {pending && isOwner && (
           <>
             <div className="hold-timer">
               <span>Thời gian giữ ghế còn lại</span>
@@ -229,7 +264,7 @@ function BookingContent({
         <ErrorMessage
           error={error || actions.sync.error || actions.cancel.error}
         />
-        {pending && (
+        {pending && isOwner && (
           <Button
             variant="primary"
             pending={actions.pay.isPending}
@@ -241,17 +276,19 @@ function BookingContent({
             Thanh toán qua PayOS
           </Button>
         )}
-        <Button
-          pending={actions.sync.isPending}
-          disabled={busy}
-          onClick={() => {
-            setError(null);
-            actions.sync.mutate();
-          }}
-        >
-          Kiểm tra trạng thái
-        </Button>
-        {pending && (
+        {isOwner && (
+          <Button
+            pending={actions.sync.isPending}
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              actions.sync.mutate();
+            }}
+          >
+            Kiểm tra trạng thái
+          </Button>
+        )}
+        {pending && isOwner && (
           <Button
             variant="ghost"
             disabled={busy || stale}
@@ -265,7 +302,20 @@ function BookingContent({
             Chọn phim khác
           </Link>
         )}
-        <Placeholder compact title="Combo & mã ưu đãi" />
+        {pending && isOwner && (
+          <BookingCombos
+            booking={booking}
+            disabled={
+              busy ||
+              timer.expired ||
+              stale ||
+              booking.payment?.status === "PENDING"
+            }
+            busy={actions.combos.isPending}
+            save={actions.combos.mutateAsync}
+          />
+        )}
+        <Placeholder compact title="Mã ưu đãi" />
       </aside>
       {confirm && (
         <Dialog
