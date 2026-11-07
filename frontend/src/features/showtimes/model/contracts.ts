@@ -50,6 +50,7 @@ export type Page<T> = {
 };
 export type ShowtimeFilters = {
   date: string;
+  location?: string;
   cinemaId?: number;
   screenId?: number;
   movieId?: number;

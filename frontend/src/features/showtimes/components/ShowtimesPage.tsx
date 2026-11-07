@@ -162,6 +162,7 @@ export function ShowtimesPage() {
             calendar.selectDate(show.startTime.slice(0, 10));
             calendar.update({
               movieId: undefined,
+              location: undefined,
               screenId: undefined,
               cinemaId: show.cinemaId,
               status: "SCHEDULED",

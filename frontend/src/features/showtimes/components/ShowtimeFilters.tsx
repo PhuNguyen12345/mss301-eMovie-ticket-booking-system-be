@@ -1,5 +1,6 @@
 import { Field } from "../../../components/ui/Field";
 import { VenueFields } from "../../cinema/VenueFields";
+import { LocationFilter } from "./LocationFilter";
 import type { Movie, ShowtimeFilters as Filters } from "../model/contracts";
 export function ShowtimeFilters({
   value,
@@ -16,6 +17,12 @@ export function ShowtimeFilters({
   };
   return (
     <div className="filters">
+      <LocationFilter
+        value={value.location}
+        change={(location) =>
+          update({ location, cinemaId: undefined, screenId: undefined })
+        }
+      />
       <Field label="Phim">
         <select
           value={value.movieId ?? ""}

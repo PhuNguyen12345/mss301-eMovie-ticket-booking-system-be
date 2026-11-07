@@ -108,6 +108,34 @@ async function login(page: Page) {
   await expect(dialog).not.toBeVisible();
 }
 
+test("admin location filtering clears dependent venue selections", async ({
+  page,
+}) => {
+  const state = await mockApi(page);
+  await page.getByLabel("Rạp", { exact: true }).selectOption("1");
+  await page.getByLabel("Phòng chiếu", { exact: true }).selectOption("1");
+  await expect
+    .poll(() => new URLSearchParams(state.lists.at(-1)).get("screenId"))
+    .toBe("1");
+  await page.getByLabel("Địa điểm", { exact: true }).fill("  Hồ Chí Minh  ");
+  await page.getByRole("button", { name: "Lọc địa điểm" }).click();
+  await expect
+    .poll(() => new URLSearchParams(state.lists.at(-1)).get("location"))
+    .toBe("Hồ Chí Minh");
+  const params = new URLSearchParams(state.lists.at(-1));
+  expect(params.has("cinemaId")).toBe(false);
+  expect(params.has("screenId")).toBe(false);
+  expect(params.get("page")).toBe("0");
+  await expect(page.getByLabel("Rạp", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Phòng chiếu", { exact: true })).toHaveValue("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("HTTP mode follows catalogue pagination and sends server-side filters", async ({
   page,
 }) => {

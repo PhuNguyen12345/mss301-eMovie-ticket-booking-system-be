@@ -13,6 +13,7 @@ import {
   EmptyState,
 } from "../../components/ui/Feedback";
 import { Pagination } from "../../components/ui/Pagination";
+import { LocationFilter } from "../showtimes/components/LocationFilter";
 export function MoviePage() {
   const id = Number(useParams().movieId);
   const movie = useMovie(id);
@@ -111,10 +112,12 @@ function MovieShowtimes({ id }: { id: number }) {
   const [date, setDate] = useState(localDate);
   const [page, setPage] = useState(0);
   const [cinemaId, setCinemaId] = useState<number>();
+  const [location, setLocation] = useState<string>();
   const cinemas = useCinemas();
   const query = useShowtimes({
     movieId: id,
     cinemaId,
+    location,
     date,
     status: "SCHEDULED",
     page,
@@ -160,6 +163,14 @@ function MovieShowtimes({ id }: { id: number }) {
           </select>
         </Field>
       )}
+      <LocationFilter
+        value={location}
+        change={(next) => {
+          setLocation(next);
+          setCinemaId(undefined);
+          setPage(0);
+        }}
+      />
       <ErrorMessage
         error={cinemas.error}
         retry={() => {

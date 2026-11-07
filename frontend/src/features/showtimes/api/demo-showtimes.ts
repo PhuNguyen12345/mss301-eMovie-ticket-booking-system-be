@@ -26,6 +26,7 @@ export function createDemoShowtimes(): ShowtimeRepository {
         .filter(
           (s) =>
             s.startTime.startsWith(filters.date) &&
+            !filters.location &&
             (!filters.cinemaId || s.cinemaId === filters.cinemaId) &&
             (!filters.screenId || s.screenId === filters.screenId) &&
             (!filters.movieId || s.movieId === filters.movieId) &&

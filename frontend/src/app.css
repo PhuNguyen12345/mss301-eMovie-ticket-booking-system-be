@@ -1002,3 +1002,25 @@ a.booking-card:hover {
     grid-template-columns: 1fr;
   }
 }
+.catalogue-filters {
+  margin: 0 0 24px;
+  max-width: 320px;
+}
+.genre-filter {
+  min-width: 0;
+}
+.location-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0;
+}
+.location-filter .field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.filters .location-filter {
+  grid-column: 1 / -1;
+  margin: 0;
+}
