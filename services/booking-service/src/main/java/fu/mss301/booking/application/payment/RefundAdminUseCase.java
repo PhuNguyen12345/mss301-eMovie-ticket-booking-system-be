@@ -9,7 +9,10 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** PayOS has no refund API: staff transfer the money back manually and record it here. */
+/**
+ * Refunds only cover system-side cases, such as money arriving after a booking closed. Customers who bought a
+ * ticket are not refunded. Staff transfer the money back manually and record it here.
+ */
 public class RefundAdminUseCase {
     private final PaymentRepository payments;
     private final Transactions transactions;

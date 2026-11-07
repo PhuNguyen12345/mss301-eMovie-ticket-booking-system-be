@@ -2,6 +2,7 @@ package fu.mss301.booking.application.policy;
 
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.port.PaymentGateway;
+import fu.mss301.booking.application.port.PaymentGateway.LinkStatus;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
 import fu.mss301.booking.domain.payment.PaymentRepository;
@@ -43,16 +44,23 @@ public class BookingEventPolicy {
                     return payment.checkoutUrl() == null ? null : payment.orderCode();
                 })
                 .filter(java.util.Objects::nonNull).toList());
-            for (Long orderCode : openLinks) {
-                try {
-                    gateway.cancelLink(orderCode, reason);
-                } catch (RuntimeException exception) {
-                    // Best effort: an unpaid link also expires on PayOS' side at the booking's expiredAt.
-                    log.log(Level.WARNING, () -> "Could not cancel PayOS link " + orderCode + ": " + exception.getMessage());
-                }
-            }
+            openLinks.forEach(orderCode -> cancelIfStillOpen(orderCode, reason));
         } catch (RuntimeException exception) {
             log.log(Level.ERROR, () -> "Closing payments of booking " + bookingId + " failed", exception);
+        }
+    }
+
+    /**
+     * PayOS closes a link by itself at the booking's expiredAt and rejects cancelling a closed link (code 221),
+     * so only a link that is still open is cancelled. Best effort: a failure here leaves a link that expires.
+     */
+    private void cancelIfStillOpen(Long orderCode, String reason) {
+        try {
+            if (gateway.getLinkState(orderCode).status() == LinkStatus.PENDING) {
+                gateway.cancelLink(orderCode, reason);
+            }
+        } catch (RuntimeException exception) {
+            log.log(Level.WARNING, () -> "Could not cancel PayOS link " + orderCode + ": " + exception.getMessage());
         }
     }
 }
