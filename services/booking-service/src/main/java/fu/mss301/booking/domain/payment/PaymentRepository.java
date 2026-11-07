@@ -1,5 +1,6 @@
 package fu.mss301.booking.domain.payment;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +16,8 @@ public interface PaymentRepository {
     Optional<PaymentTransaction> findByRefundIdForUpdate(Integer refundId);
 
     List<PaymentTransaction> findByBookingId(Integer bookingId);
+
+    List<PaymentTransaction> findByBookingIds(Collection<Integer> bookingIds);
 
     List<PaymentTransaction> findPendingByBookingIdForUpdate(Integer bookingId);
 

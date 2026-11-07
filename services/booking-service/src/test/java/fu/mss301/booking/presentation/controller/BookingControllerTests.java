@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class BookingControllerTests {
     private HoldSeatsUseCase holdSeats;
+    private BookingQueryService queries;
     private InitiatePaymentUseCase initiatePayment;
     private ReplaceBookingCombosUseCase replaceCombos;
     private HandlePayosWebhookUseCase webhook;
@@ -40,12 +41,13 @@ class BookingControllerTests {
     @BeforeEach
     void setUp() {
         holdSeats = mock(HoldSeatsUseCase.class);
+        queries = mock(BookingQueryService.class);
         initiatePayment = mock(InitiatePaymentUseCase.class);
         replaceCombos = mock(ReplaceBookingCombosUseCase.class);
         webhook = mock(HandlePayosWebhookUseCase.class);
         refunds = mock(RefundAdminUseCase.class);
         mvc = MockMvcBuilders.standaloneSetup(
-                new BookingController(mock(SeatMapQuery.class), holdSeats, mock(BookingQueryService.class),
+                new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
                     mock(CancelBookingUseCase.class), initiatePayment, replaceCombos),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
@@ -64,6 +66,44 @@ class BookingControllerTests {
             .andExpect(header().string("Location", "http://localhost/api/bookings/11"))
             .andExpect(jsonPath("$.status").value(201))
             .andExpect(jsonPath("$.data.status").value("PENDING_PAYMENT"));
+    }
+
+    @Test
+    void adminSearchPassesEveryFilterToTheService() throws Exception {
+        var search = new BookingSearch(BookingStatus.CONFIRMED, 3L, 7, "BK1", LocalDateTime.of(2027, 1, 20, 0, 0),
+            LocalDateTime.of(2027, 1, 21, 0, 0));
+        when(queries.search(search, 1, 5)).thenReturn(new BookingPage<>(List.of(), 1, 5, 6, 2, false, true));
+        mvc.perform(get("/api/bookings").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                .param("status", "CONFIRMED").param("showtimeId", "3").param("userId", "7").param("code", "BK1")
+                .param("from", "2027-01-20T00:00:00").param("to", "2027-01-21T00:00:00")
+                .param("page", "1").param("size", "5"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(6))
+            .andExpect(jsonPath("$.data.last").value(true));
+    }
+
+    @Test
+    void adminSearchWithoutFiltersUsesTheDefaultPage() throws Exception {
+        when(queries.search(new BookingSearch(null, null, null, null, null, null), 0, 10))
+            .thenReturn(new BookingPage<>(List.of(), 0, 10, 0, 0, true, true));
+        mvc.perform(get("/api/bookings").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void onlyAdminsCanSearch() throws Exception {
+        mvc.perform(get("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/bookings")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(queries);
+    }
+
+    @Test
+    void malformedSearchParametersAre400() throws Exception {
+        mvc.perform(get("/api/bookings").param("status", "NOPE").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/bookings").param("from", "20-01-2027").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isBadRequest());
     }
 
     @Test

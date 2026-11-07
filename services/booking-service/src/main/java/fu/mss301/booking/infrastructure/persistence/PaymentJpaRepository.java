@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +27,8 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, Integer> {
     Optional<Integer> findPaymentIdByRefundId(@Param("refundId") Integer refundId);
 
     List<PaymentEntity> findByBookingIdOrderByIdAsc(Integer bookingId);
+
+    List<PaymentEntity> findByBookingIdInOrderByIdAsc(Collection<Integer> bookingIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from PaymentEntity p where p.bookingId = :bookingId and p.status = :status order by p.id")
