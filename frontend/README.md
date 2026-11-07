@@ -82,6 +82,13 @@ senders so Spring discovers them as delivery ports. Deploy that fix with the
 registration/reset screens; public routes alone are insufficient to deliver OTPs.
 
 Showtime forms select a cinema and its rooms; changing cinema clears the room.
+Customer/admin movie catalogues support server-side genre filtering. Genre options
+follow every catalogue page; customer filters are stored in the URL and preserved
+across search, status tabs and pagination. Showtime lists also accept a location
+search; applying it resets the page and previous cinema/screen selection.
+Admins can confirm a quick movie-status change through `PATCH /movies/{id}/status`.
+Only status is sent, and failed writes retain the selection for an explicit retry.
+Changing a movie's publication status does not cancel showtimes or refund bookings.
 Seat prices use live seat-type names. Customers can filter schedules by cinema;
 booking availability and holds come from booking-service. The cinema admin screen
 manages physical facilities and seats, independently of sold/held seat inventory.
@@ -166,10 +173,12 @@ holds, role access, private-cache isolation, refund confirmation and mobile
 layout. Browser API tests use mocked HTTP contracts and a mocked PayOS checkout;
 they do not perform real transactions or replace live backend integration testing.
 
-Current checks: 27 unit tests and 37 browser contract tests, including session
+Current checks: 27 unit tests and 41 browser contract tests, including session
 rotation races, multipart handling and movie-management drafts. Separately, live
 Chromium verified registration/reset with MailHog OTPs, cinema/room/seat creation,
 showtime pricing, a real seat hold, combo totals, cancellation and admin booking
 search against local MySQL. Live checks also cover genre/person administration,
 movie genre/credit assignment, customer detail and real refresh-token rotation.
+Live checks also verify customer/admin genre filters, status-only updates with the
+sample status restored afterwards, and location filtering against existing shows.
 PayOS payment and Cloudinary upload remain unverified without credentials.

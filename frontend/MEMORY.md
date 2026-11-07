@@ -1,6 +1,6 @@
 # Frontend project memory
 
-Updated: 2026-11-07. Read this file before continuing FE work.
+Updated: 2026-11-08. Read this file before continuing FE work.
 
 ## Agreed scope
 
@@ -83,6 +83,26 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
   changes do not overwrite unsaved edits. Customer detail displays saved credits.
 - Poster uploads accept JPEG/PNG up to 5 MiB, matching the backend. Cloudinary
   success still requires credentials; failed uploads never report success.
+- Customer/admin movie catalogues filter by `genreId`. Shared genre options follow
+  server pagination; customer URL filters survive search, status tabs, pagination
+  and browser history. Changing a filter resets the page.
+- Customer/admin showtimes filter by `location` through the backend. Applying a
+  location clears the previous cinema/screen selection and resets pagination;
+  newly created/edited showtimes clear the location filter so the result is visible.
+- Admin movies offer a confirmed status-only PATCH with retained selection on
+  failure. This changes publication status only, without cancelling/refunding
+  existing showtimes/bookings.
+
+## API audit (2026-11-08)
+
+- Audited master at `9b58f53`; its new change only rejects malformed PayOS webhooks.
+  This commit is not merged into the FE branch/runtime yet; their BE baseline stays
+  `2d927c6`. The three additions above use APIs that already exist at that baseline.
+- `POST /movies/{id}/expire` is redundant with PATCH status EXPIRED and is not
+  called separately. PayOS webhooks are called by PayOS, never by FE.
+- Detail GETs for genres/persons/seat-types/seats remain available for future
+  dedicated detail screens; current editors use the corresponding list records.
+  These are not missing backend APIs. The missing-business-API table remains valid.
 
 ## Local verification
 
@@ -110,7 +130,7 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   causing `No projection handler`. The fix and a concrete-adapter discovery test
   are now committed with this branch; runtime uses the same fix. Compose JWT
   interpolation is already corrected in master.
-- Validation: 27 FE unit tests, 37 browser contract tests, production build and
+- Validation: 27 FE unit tests, 41 browser contract tests, production build and
   formatting pass; 9 focused Java OTP tests pass. Contract browser tests use mocks.
 - Live Chromium separately verified real gateway/MySQL flows without mocks:
   registration + MailHog OTP verification, password reset + OTP, admin login,
@@ -127,3 +147,9 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   `movie-assets.png`, `movie-detail-mobile.png`. Local sample records remain in DB.
 - Real PayOS checkout and Cloudinary uploads still need credentials and remain
   unverified. No payment was simulated or marked paid in the database.
+- Live checks on 2026-11-08 verified customer/admin genre filters, a real
+  status-only PATCH (sample movie restored afterwards), and location filtering
+  returning an existing showtime. Browser contract tests additionally cover filter
+  pagination/history, dependent venue resets and rejected status changes.
+  Artifacts: runtime `live-results/catalogue-filter-report.json`,
+  `catalogue-filter-mobile.png`, `location-filter-admin.png`.
