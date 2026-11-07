@@ -1,16 +1,15 @@
 package fu.mss301.booking.application.policy;
 
-import fu.mss301.booking.application.TransactionRunner;
+import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
 import fu.mss301.booking.domain.payment.PaymentRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,16 +17,16 @@ import java.util.List;
 /** Booking released its seats -> close its open payment attempts and their PayOS links. */
 @Component
 public class BookingEventPolicy {
-    private static final Logger log = LoggerFactory.getLogger(BookingEventPolicy.class);
+    private static final System.Logger log = System.getLogger(BookingEventPolicy.class.getName());
     private final PaymentRepository payments;
     private final PaymentGateway gateway;
-    private final TransactionRunner tx;
+    private final Transactions transactions;
     private final Clock clock;
 
-    public BookingEventPolicy(PaymentRepository payments, PaymentGateway gateway, TransactionRunner tx, Clock clock) {
+    public BookingEventPolicy(PaymentRepository payments, PaymentGateway gateway, Transactions transactions, Clock clock) {
         this.payments = payments;
         this.gateway = gateway;
-        this.tx = tx;
+        this.transactions = transactions;
         this.clock = clock;
     }
 
@@ -43,7 +42,7 @@ public class BookingEventPolicy {
 
     private void closeOpenPayments(Integer bookingId, String reason) {
         try {
-            List<Long> openLinks = tx.call(() -> payments.findPendingByBookingIdForUpdate(bookingId).stream()
+            List<Long> openLinks = transactions.write(() -> payments.findPendingByBookingIdForUpdate(bookingId).stream()
                 .filter(payment -> payment.markFailed(LocalDateTime.now(clock)))
                 .map(payment -> {
                     payments.save(payment);
@@ -55,11 +54,11 @@ public class BookingEventPolicy {
                     gateway.cancelLink(orderCode, reason);
                 } catch (RuntimeException exception) {
                     // Best effort: an unpaid link also expires on PayOS' side at the booking's expiredAt.
-                    log.warn("Could not cancel PayOS link {}: {}", orderCode, exception.getMessage());
+                    log.log(Level.WARNING, () -> "Could not cancel PayOS link " + orderCode + ": " + exception.getMessage());
                 }
             }
         } catch (RuntimeException exception) {
-            log.error("Closing payments of booking {} failed", bookingId, exception);
+            log.log(Level.ERROR, () -> "Closing payments of booking " + bookingId + " failed", exception);
         }
     }
 }

@@ -1,6 +1,6 @@
 package fu.mss301.booking.application.booking;
 
-import fu.mss301.booking.application.TransactionRunner;
+import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.port.SeatLayoutProvider;
 import fu.mss301.booking.application.port.SeatLayoutProvider.PhysicalSeat;
@@ -9,11 +9,10 @@ import fu.mss301.booking.application.port.ShowtimeCatalog.SeatTypePrice;
 import fu.mss301.booking.application.port.ShowtimeCatalog.ShowtimeSnapshot;
 import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingRepository;
+import fu.mss301.booking.domain.booking.SeatAlreadyTakenException;
 import fu.mss301.booking.domain.booking.SeatSelection;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -23,22 +22,21 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /** Holds seats for a customer and opens a PENDING_PAYMENT booking. */
-@Service
 public class HoldSeatsUseCase {
     private final ShowtimeCatalog showtimes;
     private final SeatLayoutProvider seatLayout;
     private final BookingRepository bookings;
     private final HoldPolicy policy;
-    private final TransactionRunner tx;
+    private final Transactions transactions;
     private final Clock clock;
 
     public HoldSeatsUseCase(ShowtimeCatalog showtimes, SeatLayoutProvider seatLayout, BookingRepository bookings,
-                            HoldPolicy policy, TransactionRunner tx, Clock clock) {
+                            HoldPolicy policy, Transactions transactions, Clock clock) {
         this.showtimes = showtimes;
         this.seatLayout = seatLayout;
         this.bookings = bookings;
         this.policy = policy;
-        this.tx = tx;
+        this.transactions = transactions;
         this.clock = clock;
     }
 
@@ -58,10 +56,9 @@ public class HoldSeatsUseCase {
             .map(seatId -> priceSeat(seatId, layout, prices, showtime)).toList();
 
         try {
-            return tx.call(() -> BookingView.of(bookings.save(
+            return transactions.write(() -> BookingView.of(bookings.save(
                 Booking.hold(userId, showtimeId, selections, policy.maxSeats(), now, policy.holdTtl())), null));
-        } catch (DataIntegrityViolationException exception) {
-            // uq_booking_seats_active: another booking holds or owns one of these seats.
+        } catch (SeatAlreadyTakenException exception) {
             throw new SeatUnavailableException("One or more selected seats are no longer available");
         }
     }

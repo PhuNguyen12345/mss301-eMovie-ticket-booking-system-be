@@ -1,14 +1,12 @@
 package fu.mss301.booking.application.payment;
 
 import fu.mss301.booking.application.port.PaymentGateway;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+
+import java.lang.System.Logger.Level;
 
 /** Entry point for PayOS payment notifications. Only signature-verified data is trusted. */
-@Service
 public class HandlePayosWebhookUseCase {
-    private static final Logger log = LoggerFactory.getLogger(HandlePayosWebhookUseCase.class);
+    private static final System.Logger log = System.getLogger(HandlePayosWebhookUseCase.class.getName());
     private final PaymentGateway gateway;
     private final PaymentSettlementService settlement;
 
@@ -20,11 +18,11 @@ public class HandlePayosWebhookUseCase {
     public void handle(Object body) {
         var payment = gateway.verifyWebhook(body);
         if (!payment.success()) {
-            log.info("PayOS reported a non-successful payment for order {}", payment.orderCode());
+            log.log(Level.INFO, () -> "PayOS reported a non-successful payment for order " + payment.orderCode());
             return;
         }
         if (!settlement.recordSuccess(payment.orderCode(), payment.amount(), payment.reference(), payment.paidAt())) {
-            log.warn("PayOS webhook for unknown order code {} ignored", payment.orderCode());
+            log.log(Level.WARNING, () -> "PayOS webhook for unknown order code " + payment.orderCode() + " ignored");
         }
     }
 }

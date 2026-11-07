@@ -1,8 +1,8 @@
 package fu.mss301.booking.infrastructure.persistence;
 
+import fu.mss301.booking.application.booking.OccupiedSeat;
 import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingStatus;
-import fu.mss301.booking.domain.booking.OccupiedSeat;
 import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -29,7 +29,7 @@ interface BookingJpaRepository extends JpaRepository<Booking, Integer> {
                                                Pageable limit);
 
     @Query("""
-        select new fu.mss301.booking.domain.booking.OccupiedSeat(s.seatId, s.status)
+        select new fu.mss301.booking.application.booking.OccupiedSeat(s.seatId, s.status)
         from BookingSeat s where s.showtimeId = :showtimeId and s.status in :statuses
         """)
     List<OccupiedSeat> findSeats(@Param("showtimeId") Long showtimeId,

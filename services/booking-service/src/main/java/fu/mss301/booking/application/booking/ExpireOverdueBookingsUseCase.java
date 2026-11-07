@@ -1,43 +1,41 @@
 package fu.mss301.booking.application.booking;
 
-import fu.mss301.booking.application.TransactionRunner;
+import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.BookingStatus;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
+import java.lang.System.Logger.Level;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
 /** Releases seats of bookings whose hold ran out without a payment. */
-@Service
 public class ExpireOverdueBookingsUseCase {
-    private static final Logger log = LoggerFactory.getLogger(ExpireOverdueBookingsUseCase.class);
+    private static final System.Logger log = System.getLogger(ExpireOverdueBookingsUseCase.class.getName());
     private final BookingRepository bookings;
     private final ReconcilePaymentUseCase reconciliation;
-    private final TransactionRunner tx;
+    private final Transactions transactions;
     private final Clock clock;
 
     public ExpireOverdueBookingsUseCase(BookingRepository bookings, ReconcilePaymentUseCase reconciliation,
-                                        TransactionRunner tx, Clock clock) {
+                                        Transactions transactions, Clock clock) {
         this.bookings = bookings;
         this.reconciliation = reconciliation;
-        this.tx = tx;
+        this.transactions = transactions;
         this.clock = clock;
     }
 
     /** @return number of bookings moved to EXPIRED */
     public int expireOverdue(int batchSize) {
         int expired = 0;
-        for (Integer bookingId : bookings.findOverdueIds(LocalDateTime.now(clock), batchSize)) {
+        var overdue = transactions.read(() -> bookings.findOverdueIds(LocalDateTime.now(clock), batchSize));
+        for (Integer bookingId : overdue) {
             try {
                 // A webhook may have been lost: if PayOS says the link was paid, settle instead of expiring.
                 if (reconciliation.reconcileBooking(bookingId)) continue;
-                if (tx.call(() -> expireOne(bookingId))) expired++;
+                if (transactions.write(() -> expireOne(bookingId))) expired++;
             } catch (RuntimeException exception) {
-                log.warn("Could not expire booking {}: {}", bookingId, exception.getMessage());
+                log.log(Level.WARNING, () -> "Could not expire booking " + bookingId + ": " + exception.getMessage());
             }
         }
         return expired;

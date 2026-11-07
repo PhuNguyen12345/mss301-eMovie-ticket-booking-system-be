@@ -6,6 +6,7 @@ import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView.Availability;
+import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
@@ -194,10 +195,10 @@ class BookingServiceApplicationTests {
     @Test
     void cancelReleasesSeatsAndOnlyOwnerSeesBooking() {
         var booking = holdSeats.hold(7, showtimeId, List.of(102));
-        assertThrows(fu.mss301.common.exception.ApiException.class, () -> cancelBooking.cancel(8, booking.id()));
+        assertThrows(BookingNotFoundException.class, () -> cancelBooking.cancel(8, booking.id()));
         assertEquals(BookingStatus.CANCELLED, cancelBooking.cancel(7, booking.id()).status());
         assertEquals(Availability.AVAILABLE, availability(102));
-        assertThrows(fu.mss301.common.exception.ApiException.class, () -> queries.getBooking(8, false, booking.id()));
+        assertThrows(BookingNotFoundException.class, () -> queries.getBooking(8, false, booking.id()));
         assertNotNull(queries.getBooking(8, true, booking.id()));
     }
 

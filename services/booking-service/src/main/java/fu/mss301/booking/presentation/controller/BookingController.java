@@ -53,7 +53,9 @@ public class BookingController {
     public ApiResponse<PageResponseDTO<BookingView>> myBookings(@CurrentUser AuthenticatedUser user,
                                                                 @RequestParam(name = "page", defaultValue = "0") int page,
                                                                 @RequestParam(name = "size", defaultValue = "10") int size) {
-        return ApiResponse.success(queries.myBookings(user.id(), page, size), "Bookings retrieved successfully");
+        var result = queries.myBookings(user.id(), page, size);
+        return ApiResponse.success(new PageResponseDTO<>(result.content(), result.page(), result.size(),
+            result.totalElements(), result.totalPages(), result.first(), result.last()), "Bookings retrieved successfully");
     }
 
     @GetMapping("/{id}")
