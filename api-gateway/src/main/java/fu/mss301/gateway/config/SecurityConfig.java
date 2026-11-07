@@ -66,6 +66,10 @@ public class SecurityConfig {
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
                 .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
                 .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
+                // Customers see their own vouchers and claim codes; everything else about vouchers is for admins.
+                .pathMatchers(HttpMethod.GET, "/api/vouchers/me").authenticated()
+                .pathMatchers(HttpMethod.POST, "/api/vouchers/claim").authenticated()
+                .pathMatchers("/api/vouchers", "/api/vouchers/**").hasRole("ADMIN")
                 .pathMatchers("/api/users/me", "/api/users/me/**", "/api/bookings/**", "/api/payments/**").authenticated()
                 .pathMatchers("/api/users/**").hasRole("ADMIN")
                 .anyExchange().denyAll())
