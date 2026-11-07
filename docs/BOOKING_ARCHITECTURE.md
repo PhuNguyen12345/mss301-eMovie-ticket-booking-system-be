@@ -9,11 +9,13 @@ API, schema và luồng nghiệp vụ xem ở [BOOKING_API.md](BOOKING_API.md).
 ```text
 fu.mss301.booking
   domain/
-    booking/         Booking, BookingSeat, BookingCode, BookingRepository, event/
+    booking/         Booking, BookingSeat, BookingCombo, BookingCode, BookingRepository, event/
+    combo/           Combo, ComboRepository
     payment/         PaymentTransaction, Refund, PaymentRepository, event/
     shared/          DomainEvent, DomainException, InvalidStateTransitionException
   application/
     booking/         Use case và view của booking
+    combo/           Danh mục combo
     payment/         Use case và view của thanh toán, hoàn tiền
     policy/          Phản ứng với domain event
     port/            Transactions, DomainEvents, BookingQueries, ShowtimeCatalog,
@@ -76,10 +78,17 @@ Repository adapter yêu cầu có transaction (`MANDATORY`) vì mapper phải đ
 
 ## Lưu aggregate
 
-- Mapper chỉ cập nhật field có thể thay đổi. Dòng con có id được tìm lại đúng theo id và không bao giờ bị xóa, nên id của `booking_seats` và `refunds` được giữ nguyên.
+- Mapper chỉ cập nhật field có thể thay đổi. Dòng con có id được tìm lại đúng theo id, nên id của `booking_seats`, `refunds` và `booking_combos` được giữ nguyên.
+- Dòng `booking_seats` và `refunds` không bao giờ bị xóa. Riêng `booking_combos` bị xóa khi combo được bỏ khỏi booking, vì đây là lựa chọn chưa thanh toán, không phải lịch sử.
 - `version()` trên aggregate chỉ để adapter so sánh. Lệch version sẽ trả 409.
 - `active_flag` là generated column, không được map vào entity.
 - `save()` flush ngay, để lỗi `uq_booking_seats_active` được đổi thành `SeatAlreadyTakenException` rồi trả về 409.
+
+## Combo
+
+`Combo` là aggregate riêng, `Booking` chỉ giữ `comboId` và bản sao đơn giá. `PUT /api/bookings/{id}/combos` chỉ ghi vào `Booking`, còn `Combo` chỉ được đọc, nên vẫn giữ quy tắc 1 transaction ghi 1 aggregate.
+
+Quy tắc "không sửa combo khi có payment `PENDING`" nằm ở `ReplaceBookingCombosUseCase` vì cần dữ liệu của 2 aggregate. Use case này khóa dòng booking trước, cùng thứ tự với `InitiatePaymentUseCase`, nên sửa combo và tạo link không thể chen vào nhau để ra link sai số tiền.
 
 ## Logging
 
