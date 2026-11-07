@@ -146,8 +146,14 @@ Frontend redirect người dùng tới `checkoutUrl`. Sau khi PayOS redirect v�
 
 ### 2.6 Hoàn tiền (ADMIN)
 
-PayOS **không có API hoàn tiền** cho link thanh toán, nên hệ thống chỉ tạo yêu cầu `refunds` trạng thái `PENDING`; nhân viên chuyển khoản
-trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`.
+**Chính sách:** không hoàn tiền cho khách đã mua vé. Khi cần bù cho khách, dùng hình thức trong hệ thống như voucher hoặc điểm.
+
+Bảng `refunds` chỉ dùng cho **lỗi phía hệ thống**, khi tiền đã về nhưng không thể xuất vé:
+
+- Tiền về sau khi booking đã `EXPIRED` hoặc `CANCELLED`.
+- Một booking được thanh toán thành công 2 lần.
+
+Hệ thống tự tạo `refunds` trạng thái `PENDING`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
 
 ## 3. State machine
 
@@ -213,7 +219,7 @@ Nhánh hết hạn (job chạy mỗi `BOOKING_EXPIRY_SCAN_INTERVAL`, mặc đị
 
 1. Lấy các booking `PENDING_PAYMENT` có `expiredAt <= now`.
 2. Hỏi PayOS trạng thái từng link đang mở – nếu thực ra đã `PAID` (webhook bị mất) → đi nhánh thành công.
-3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED` + hủy link PayOS.
+3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED`. Link hủy được thì mới hủy: PayOS tự đóng link đúng giờ hết hạn và từ chối hủy link đã đóng (code `221`).
 
 Nhánh thanh toán trễ: tiền về sau khi booking đã `EXPIRED`/`CANCELLED` → payment vẫn ghi `SUCCESS` (không mất dấu tiền), booking giữ nguyên,
 tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được đưa vào hoàn tiền.
@@ -243,15 +249,50 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
 | `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
-| `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect |
+| `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
+
+Khi chạy bằng `docker-compose`, đặt các biến `PAYOS_*` trong file `.env` ở **thư mục gốc** repo. File `services/booking-service/.env` chỉ có tác dụng khi chạy service trực tiếp, không qua compose. Sau khi sửa `.env`, chạy `docker-compose up -d booking-service` để tạo lại container.
+
+### Return URL và webhook URL
+
+Đây là 2 URL khác nhau, do 2 bên khác nhau gọi tới:
+
+| | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | Webhook URL |
+| --- | --- | --- |
+| Ai gọi | **Trình duyệt của khách**, sau khi rời trang PayOS | **Máy chủ PayOS** |
+| Khai báo ở đâu | `.env` | Kênh thanh toán trên my.payos.vn |
+| Trỏ tới | Trang FE | `https://<gateway>/api/payments/payos/webhook` |
+| Local | `http://localhost:5173/...` dùng được khi khách và FE cùng một máy | Bắt buộc qua tunnel |
+| Deploy | Domain công khai của FE | Domain công khai của gateway |
+
+Vì trình duyệt của khách gọi return URL, không dùng tên service trong Docker như `http://booking-service:8085`.
+
+Trang FE không được tin trạng thái trên query string của return URL. Sau khi redirect về, FE gọi `POST /api/payments/bookings/{bookingId}/sync` hoặc `GET /api/bookings/{id}`.
 
 ### Test PayOS ở local
 
-1. Tạo kênh thanh toán trên https://my.payos.vn, copy Client ID / API Key / Checksum Key vào `services/booking-service/.env` (không commit).
-2. Expose gateway ra internet: `cloudflared tunnel --url http://localhost:8080` (hoặc `ngrok http 8080`).
+1. Tạo kênh thanh toán trên https://my.payos.vn, copy Client ID / API Key / Checksum Key vào `.env` ở thư mục gốc (không commit).
+2. Expose gateway ra internet: `cloudflared tunnel --url http://127.0.0.1:8080`. Dùng `127.0.0.1` thay vì `localhost`, vì `localhost` có thể trỏ tới `::1` và bị reset, trong khi gateway chỉ publish trên `127.0.0.1`.
 3. Khai báo webhook URL `https://<tunnel>/api/payments/payos/webhook` trong kênh thanh toán – PayOS gửi request test, service trả 200.
 4. Đăng nhập lấy JWT → `POST /api/bookings` → `POST /api/bookings/{id}/payments` → mở `checkoutUrl`, quét QR.
 5. Kiểm tra `GET /api/bookings/{id}` = `CONFIRMED`, sơ đồ ghế = `BOOKED`. Để quá TTL mà không trả → `EXPIRED`, ghế về `AVAILABLE`.
+
+### Tài khoản admin khi chạy local
+
+Migration của user-service tạo sẵn `admin@gmail.com`, nhưng mật khẩu không được ghi trong tài liệu. Khi chạy local, hãy tạo một admin riêng trong `user-db` bằng mật khẩu do bạn tự đặt:
+
+```bash
+PW='doi-mat-khau-nay'
+HASH=$(htpasswd -bnBC 10 "" "$PW" | tr -d ':\n' | sed 's/^\$2y/$2a/')
+docker-compose exec -T user-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" mysql -u "$MYSQL_USER" "$MYSQL_DATABASE"' <<SQL
+INSERT INTO users (full_name, email, password_hash, status, email_verified_at, created_at)
+VALUES ('Local Admin', 'local-admin@example.com', '$HASH', 'ACTIVE', NOW(6), NOW(6));
+INSERT INTO user_roles (user_id, role_id)
+SELECT u.id, r.id FROM users u JOIN roles r ON r.name = 'ADMIN' WHERE u.email = 'local-admin@example.com';
+SQL
+```
+
+Sau đó đăng nhập bằng `POST /api/auth/login`. Chỉ dùng cách này ở môi trường local. `htpasswd` có sẵn trên macOS; trên Linux, cài gói `apache2-utils`.
 
 ### Chạy test
 
@@ -266,37 +307,19 @@ docker run -d --rm --name booking-test-db -p 127.0.0.1:33099:3306 \
 BOOKING_TEST_DB_URL=jdbc:mysql://127.0.0.1:33099/booking_test ./mvnw -pl services/booking-service -am test
 ```
 
-## 7. Contract cần các service khác cung cấp
+## 7. API phụ thuộc từ service khác
 
-Booking gọi qua OpenFeign (`infrastructure/client`). Hai endpoint dưới **chưa tồn tại** – đây là contract đề xuất cho team cinema/showtime.
+Booking gọi qua OpenFeign (`infrastructure/client`). Cả 3 endpoint dưới đây đều đã có.
 
-**Cinema Service** – `GET /api/screens/{screenId}/seats` (bắt buộc để giữ ghế):
+| Service | Endpoint | Field booking dùng | Dùng để |
+| --- | --- | --- | --- |
+| Showtime | `GET /api/showtimes/{id}` | `id`, `screenId`, `startTime`, `basePrice`, `status` | Kiểm tra suất chiếu còn mở bán, lấy phòng và giá gốc |
+| Showtime | `GET /api/showtimes/{id}/seat-prices` | `id`, `seatTypeId`, `price` | Giá theo loại ghế |
+| Cinema | `GET /api/screens/{screenId}/seats` | `id`, `screenId`, `rowCode`, `seatNumber`, `seatTypeId`, `status` | Sơ đồ ghế vật lý |
 
-```json
-{
-  "status": 200,
-  "data": [
-    {"id": 101, "screenId": 3, "rowCode": "A", "seatNumber": 1, "seatTypeId": 1, "status": "ACTIVE"}
-  ]
-}
-```
-
-`status` khác `ACTIVE` (ví dụ `MAINTENANCE`) → ghế hiển thị `UNAVAILABLE`, không giữ được.
-
-**Showtime Service** – `GET /api/showtimes/{id}/seat-prices` (tùy chọn, bảng `showtime_seat_prices` trong ERD):
-
-```json
-{
-  "status": 200,
-  "data": [
-    {"id": 77, "seatTypeId": 2, "price": 150000}
-  ]
-}
-```
-
-Nếu endpoint trả 404 (chưa làm) → mọi ghế dùng `basePrice`. `id` được lưu vào `booking_seats.showtime_seat_id`.
-
-Booking cũng dùng `GET /api/showtimes/{id}` hiện có (cần các field `id`, `screenId`, `startTime`, `basePrice`, `status`).
+- Ghế có `status` khác `ACTIVE`, ví dụ `MAINTENANCE`, hiển thị `UNAVAILABLE` và không giữ được.
+- Loại ghế không có giá riêng thì dùng `basePrice`. Nếu có giá riêng, `id` của dòng giá được lưu vào `booking_seats.showtime_seat_id`.
+- Suất chiếu không tồn tại thì booking trả 404. Service phụ thuộc lỗi hoặc không phản hồi thì booking trả 503.
 
 ## 8. Schema `booking_db` và điểm khác ERD
 
