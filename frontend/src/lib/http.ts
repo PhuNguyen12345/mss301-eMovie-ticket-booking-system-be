@@ -34,7 +34,7 @@ type ClientOptions = {
   timeoutMs?: number;
 };
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
   anonymous?: boolean;
