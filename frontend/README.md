@@ -54,23 +54,25 @@ private API data. Real booking uses API mode and the deployed cinema service.
 
 ## Screens and connected endpoints
 
-| Screen                    | Route                           | Backend calls (under `/api`)                                                                                            |
-| ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Movie catalogue           | `/`                             | `GET /movies` with search, status and pagination                                                                        |
-| Movie detail and sessions | `/movies/:movieId`              | `GET /movies/{id}`, `GET /showtimes`                                                                                    |
-| Seat selection            | `/showtimes/:showtimeId/seats`  | `GET /showtimes/{id}`, `GET /bookings/showtimes/{id}/seats`, `POST /bookings`                                           |
-| My bookings               | `/bookings`                     | `GET /bookings/me`                                                                                                      |
-| Booking and checkout      | `/bookings/:bookingId`          | `GET /bookings/{id}`, `POST /bookings/{id}/cancel`, `POST /bookings/{id}/payments`, `POST /payments/bookings/{id}/sync` |
-| Payment return            | `/payment/result`               | Retrieve booking and synchronize payment with backend                                                                   |
-| Account                   | `/account`                      | `GET /users/me`, `POST /users/me/password/otp`, `POST /users/me/password/confirm`                                       |
-| Admin schedules           | `/admin/showtimes`              | List/create/update/cancel showtimes, read/replace seat prices                                                           |
-| Admin movies              | `/admin/movies`                 | `GET/POST /movies`, `PUT /movies/{id}` including publication status                                                     |
-| Admin refunds             | `/admin/refunds`                | `GET /payments/refunds`, `POST /payments/refunds/{id}/complete`                                                         |
-| Registration / reset      | `/register`, `/forgot-password` | Register, resend OTP, verify registration, request password reset and confirm reset                                     |
-| Cinema administration     | `/admin/cinema`                 | Cinema/screen/seat-type list/create/update; seat creation; cinema/screen/seat status changes                            |
-| Admin booking search      | `/admin/orders`                 | `GET /bookings` with code, status, user, showtime, date range and pagination                                            |
-| Combo administration      | `/admin/promotions`             | `GET /combos/all`, `POST /combos`, `PUT /combos/{id}`, activate/deactivate                                              |
-| Booking combos            | `/bookings/:bookingId`          | `GET /combos`, `PUT /bookings/{id}/combos`; totals come from the updated booking                                        |
+| Screen                    | Route                             | Backend calls (under `/api`)                                                                                                 |
+| ------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Movie catalogue           | `/`                               | `GET /movies` with search, status and pagination                                                                             |
+| Movie detail and sessions | `/movies/:movieId`                | `GET /movies/{id}`, `GET /showtimes`                                                                                         |
+| Seat selection            | `/showtimes/:showtimeId/seats`    | `GET /showtimes/{id}`, `GET /bookings/showtimes/{id}/seats`, `POST /bookings`                                                |
+| My bookings               | `/bookings`                       | `GET /bookings/me`                                                                                                           |
+| Booking and checkout      | `/bookings/:bookingId`            | `GET /bookings/{id}`, `POST /bookings/{id}/cancel`, `POST /bookings/{id}/payments`, `POST /payments/bookings/{id}/sync`      |
+| Payment return            | `/payment/result`                 | Retrieve booking and synchronize payment with backend                                                                        |
+| Account                   | `/account`                        | `GET /users/me`, `POST /users/me/password/otp`, `POST /users/me/password/confirm`                                            |
+| Admin schedules           | `/admin/showtimes`                | List/create/update/cancel showtimes, read/replace seat prices                                                                |
+| Admin movies              | `/admin/movies`                   | `GET/POST /movies`, `PUT /movies/{id}` including publication status                                                          |
+| Movie assets              | `/admin/movies/:movieId`          | `GET/PUT /movies/{id}/genres`, `GET/PUT /movies/{id}/credits`, `PUT /movies/{id}/poster`, `PUT /movies/{id}/poster/from-url` |
+| Genres and people         | `/admin/genres`, `/admin/persons` | Paginated/searchable `GET`, `POST`, `PUT` and `DELETE` for `/genres` and `/persons`                                          |
+| Admin refunds             | `/admin/refunds`                  | `GET /payments/refunds`, `POST /payments/refunds/{id}/complete`                                                              |
+| Registration / reset      | `/register`, `/forgot-password`   | Register, resend OTP, verify registration, request password reset and confirm reset                                          |
+| Cinema administration     | `/admin/cinema`                   | Cinema/screen/seat-type list/create/update; seat creation; cinema/screen/seat status changes                                 |
+| Admin booking search      | `/admin/orders`                   | `GET /bookings` with code, status, user, showtime, date range and pagination                                                 |
+| Combo administration      | `/admin/promotions`               | `GET /combos/all`, `POST /combos`, `PUT /combos/{id}`, activate/deactivate                                                   |
+| Booking combos            | `/bookings/:bookingId`            | `GET /combos`, `PUT /bookings/{id}/combos`; totals come from the updated booking                                             |
 
 Both customer and admin accounts use `POST /auth/login`. The admin layout checks
 ADMIN role; the gateway remains the authorization authority. The branch includes
@@ -85,9 +87,12 @@ booking availability and holds come from booking-service. The cinema admin scree
 manages physical facilities and seats, independently of sold/held seat inventory.
 Cinema/screen status changes do not automatically cancel or refund existing orders.
 
-Placeholder screens now cover vouchers, reports, profile updates and ticket check-in. Movie genre/person/
-credit editing and file-based poster upload are not included in this iteration;
-their backend APIs already exist. Poster/trailer URL fields are editable.
+Placeholder screens cover vouchers, reports, profile updates and ticket check-in.
+Movie editors include genres, actor/director credits and poster uploads/import.
+Reference pickers search and paginate on the server while preserving selected
+records across pages. Failed saves retain edits; navigation asks before discarding
+drafts and background updates cannot silently overwrite them. Poster uploads use
+multipart JPEG/PNG files up to 5 MiB; external storage needs Cloudinary credentials.
 
 ## State and payment behavior
 
@@ -96,9 +101,13 @@ their backend APIs already exist. Poster/trailer URL fields are editable.
 - Zod validates API envelopes and response payloads. Query keys include filters
   and user identity for private data. Reads support cancellation and bounded
   retries; mutations are never retried automatically.
-- Tokens live only in memory. Reload, expiry and an authenticated 401 require
-  login again. Logout clears the current session and private caches; server token
-  revocation is pending a backend API.
+- Tokens live only in memory. Before expiry, one shared `POST /auth/refresh`
+  request rotates tokens; requests wait for it without replaying mutations.
+  Logout/new login prevents old refresh responses from restoring a previous
+  session. Routine rotation preserves private caches and active booking flows.
+  Reload/PayOS return, failed refresh and an authenticated 401 require login
+  again. Logout clears the session and private caches; server token revocation
+  and a persistent cookie session still need backend support.
 - Seat availability refreshes every 10 seconds. Holds and totals are authoritative
   backend responses. A 409 refreshes availability without replaying the hold.
 - Pending booking detail refreshes every 5 seconds. The timer uses backend
@@ -127,6 +136,7 @@ src/
   components/ui/       Shared fields, dialogs, buttons, feedback, placeholders
   features/auth/       In-memory session and customer/admin login
   features/movies/     Catalogue/detail contracts, hooks and screens
+  features/movie-management/ Genre/person CRUD, association editors and poster uploads
   features/booking/    Seats, holds, history, checkout and payment return
   features/account/    Profile and password change
   features/admin/      Movie management and refund workflows
@@ -156,7 +166,10 @@ holds, role access, private-cache isolation, refund confirmation and mobile
 layout. Browser API tests use mocked HTTP contracts and a mocked PayOS checkout;
 they do not perform real transactions or replace live backend integration testing.
 
-Current checks: 18 unit tests and 31 browser contract tests. Separately, live
+Current checks: 27 unit tests and 37 browser contract tests, including session
+rotation races, multipart handling and movie-management drafts. Separately, live
 Chromium verified registration/reset with MailHog OTPs, cinema/room/seat creation,
 showtime pricing, a real seat hold, combo totals, cancellation and admin booking
-search against local MySQL. PayOS payment remains unverified without credentials.
+search against local MySQL. Live checks also cover genre/person administration,
+movie genre/credit assignment, customer detail and real refresh-token rotation.
+PayOS payment and Cloudinary upload remain unverified without credentials.
