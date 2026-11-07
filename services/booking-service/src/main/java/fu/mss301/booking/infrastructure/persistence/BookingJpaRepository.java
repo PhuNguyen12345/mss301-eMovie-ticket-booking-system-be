@@ -7,6 +7,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,7 +17,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer> {
+interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, JpaSpecificationExecutor<BookingEntity> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select b from BookingEntity b where b.id = :id")
     Optional<BookingEntity> lockById(@Param("id") Integer id);

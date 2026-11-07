@@ -1,6 +1,9 @@
 package fu.mss301.booking;
 
+import fu.mss301.booking.application.booking.BookingPage;
 import fu.mss301.booking.application.booking.BookingQueryService;
+import fu.mss301.booking.application.booking.BookingSearch;
+import fu.mss301.booking.application.booking.BookingView;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.ComboLine;
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
@@ -37,6 +40,8 @@ import fu.mss301.booking.domain.combo.ComboStatus;
 import fu.mss301.booking.domain.payment.PaymentStatus;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -95,6 +100,7 @@ class BookingServiceApplicationTests {
     @Autowired private Transactions transactions;
     @Autowired private DomainEvents domainEvents;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private EntityManagerFactory entityManagerFactory;
 
     @MockitoBean private ShowtimeCatalog showtimes;
     @MockitoBean private SeatLayoutProvider seatLayout;
@@ -427,8 +433,134 @@ class BookingServiceApplicationTests {
     }
 
     @Test
+    void searchFiltersByEachParameterAndTheirCombination() {
+        int user = uniqueUser();
+        var held = holdSeats.hold(user, showtimeId, List.of(101));
+        var cancelled = holdSeats.hold(user + 1, showtimeId, List.of(102));
+        cancelBooking.cancel(user + 1, cancelled.id());
+
+        assertEquals(List.of(cancelled.id(), held.id()), ids(onShowtime(null, null, null, null, null)));
+        assertEquals(List.of(held.id()), ids(onShowtime(BookingStatus.PENDING_PAYMENT, null, null, null, null)));
+        assertEquals(List.of(cancelled.id()), ids(onShowtime(null, user + 1, null, null, null)));
+        assertEquals(List.of(held.id()), ids(onShowtime(null, null, held.bookingCode(), null, null)));
+        assertEquals(List.of(), ids(onShowtime(BookingStatus.CANCELLED, user, null, null, null)));
+        assertEquals(List.of(held.id()), ids(onShowtime(BookingStatus.PENDING_PAYMENT, user, held.bookingCode(), null, null)));
+
+        var byUser = queries.search(new BookingSearch(null, null, user, null, null, null), 0, 10);
+        assertEquals(List.of(held.id()), ids(byUser));
+        assertTrue(ids(queries.search(new BookingSearch(null, showtimeId + 1_000_000_000L, null, null, null, null), 0, 10)).isEmpty());
+    }
+
+    @Test
+    void searchMatchesTheWholeCodeIgnoringCaseAndSpaces() {
+        var booking = holdSeats.hold(uniqueUser(), showtimeId, List.of(101));
+        var typed = "  " + booking.bookingCode().toLowerCase() + " ";
+        assertEquals(List.of(booking.id()), ids(onShowtime(null, null, typed, null, null)));
+        assertEquals(List.of(), ids(onShowtime(null, null, booking.bookingCode().substring(0, 8), null, null)));
+        assertEquals(List.of(booking.id()), ids(onShowtime(null, null, "   ", null, null)));
+    }
+
+    @Test
+    void searchIncludesFromAndExcludesTo() {
+        var booking = holdSeats.hold(uniqueUser(), showtimeId, List.of(101));
+        var time = queries.getBooking(0, true, booking.id()).bookingTime();
+        assertEquals(List.of(booking.id()), ids(onShowtime(null, null, null, time, null)));
+        assertEquals(List.of(), ids(onShowtime(null, null, null, null, time)));
+        assertEquals(List.of(booking.id()), ids(onShowtime(null, null, null, time, time.plusNanos(1000))));
+        assertEquals(List.of(), ids(onShowtime(null, null, null, time.plusNanos(1000), time.plusDays(1))));
+    }
+
+    @Test
+    void searchRejectsAnEmptyTimeRangeAndAnInvalidPage() {
+        var now = LocalDateTime.now(clock);
+        assertThrows(IllegalArgumentException.class, () -> onShowtime(null, null, null, now, now));
+        assertThrows(IllegalArgumentException.class, () -> onShowtime(null, null, null, now.plusDays(1), now));
+        var any = new BookingSearch(null, null, null, null, null, null);
+        assertThrows(IllegalArgumentException.class, () -> queries.search(any, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> queries.search(any, 0, 101));
+        assertThrows(IllegalArgumentException.class, () -> queries.search(any, -1, 10));
+    }
+
+    @Test
+    void searchIsNewestFirstAndPaged() {
+        int user = uniqueUser();
+        var first = holdSeats.hold(user, showtimeId, List.of(101));
+        clock.advance(Duration.ofMinutes(1));
+        var second = holdSeats.hold(user, showtimeId, List.of(102));
+        var search = new BookingSearch(null, showtimeId, null, null, null, null);
+
+        var page = queries.search(search, 0, 1);
+        assertEquals(List.of(second.id()), ids(page));
+        assertEquals(2, page.totalElements());
+        assertEquals(2, page.totalPages());
+        assertTrue(page.first());
+        assertFalse(page.last());
+        assertEquals(List.of(first.id()), ids(queries.search(search, 1, 1)));
+    }
+
+    @Test
+    void listsShowTheLatestPaymentOfEachBooking() {
+        int user = uniqueUser();
+        var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        doThrow(new PaymentGatewayException("down", null)).when(gateway).createLink(any());
+        assertThrows(PaymentGatewayException.class, () -> initiatePayment.initiate(user, booking.id()));
+        doAnswer(invocation -> {
+            PaymentGateway.LinkRequest request = invocation.getArgument(0);
+            return new CheckoutLink("link-" + request.orderCode(), "https://pay.payos.vn/web/" + request.orderCode());
+        }).when(gateway).createLink(any());
+        var latest = initiatePayment.initiate(user, booking.id());
+        var withoutPayment = holdSeats.hold(user, showtimeId, List.of(102));
+
+        var found = onShowtime(null, null, null, null, null).content();
+        assertEquals(withoutPayment.id(), found.getFirst().id());
+        assertNull(found.getFirst().payment());
+        assertEquals(latest.id(), found.getLast().payment().id());
+        assertEquals(PaymentStatus.PENDING, found.getLast().payment().status());
+        assertEquals(latest.id(), queries.myBookings(user, 0, 10).content().getLast().payment().id());
+    }
+
+    @Test
+    void queryCountDoesNotGrowWithThePage() {
+        int user = uniqueUser();
+        var combo = comboOnSale("85000");
+        var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        addClosedBookingsWithCombosAndPayments(user, combo, 2);
+        statistics.clear();
+        assertEquals(2, queries.search(new BookingSearch(null, null, user, null, null, null), 0, 100).content().size());
+        long forTwo = statistics.getPrepareStatementCount();
+
+        addClosedBookingsWithCombosAndPayments(user, combo, 6);
+        statistics.clear();
+        assertEquals(8, queries.search(new BookingSearch(null, null, user, null, null, null), 0, 100).content().size());
+        assertEquals(forTwo, statistics.getPrepareStatementCount());
+    }
+
+    @Test
     void publishingEventsOutsideATransactionFailsLoudly() {
         assertThrows(IllegalStateException.class, () -> domainEvents.publish(List.of(new BookingCancelled(1))));
+    }
+
+    private void addClosedBookingsWithCombosAndPayments(int user, Integer combo, int count) {
+        for (int i = 0; i < count; i++) {
+            var booking = holdSeats.hold(user, showtimeId, List.of(101));
+            replaceCombos.replace(user, booking.id(), List.of(new ComboLine(combo, 1)));
+            initiatePayment.initiate(user, booking.id());
+            cancelBooking.cancel(user, booking.id());
+        }
+    }
+
+    private BookingPage<BookingView> onShowtime(BookingStatus status, Integer userId, String code, LocalDateTime from,
+                                                LocalDateTime to) {
+        return queries.search(new BookingSearch(status, showtimeId, userId, code, from, to), 0, 10);
+    }
+
+    private static List<Integer> ids(BookingPage<BookingView> page) {
+        return page.content().stream().map(BookingView::id).toList();
+    }
+
+    private int uniqueUser() {
+        return (int) (showtimeId % 1_000_000_000L) * 2 + 1;
     }
 
     private Integer comboOnSale(String price) {

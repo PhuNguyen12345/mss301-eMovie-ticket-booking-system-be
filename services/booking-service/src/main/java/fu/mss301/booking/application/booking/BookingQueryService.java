@@ -9,6 +9,11 @@ import fu.mss301.booking.domain.payment.PaymentRepository;
 import fu.mss301.booking.domain.payment.PaymentTransaction;
 
 import java.util.Comparator;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.BinaryOperator;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class BookingQueryService {
     private final BookingRepository bookings;
@@ -25,9 +30,18 @@ public class BookingQueryService {
     }
 
     public BookingPage<BookingView> myBookings(Integer userId, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page must be >= 0 and size 1..100");
-        return transactions.read(() -> queries.findByUser(userId, page, size)
-            .map(booking -> BookingView.of(booking, latestPayment(booking))));
+        requireValidPage(page, size);
+        return transactions.read(() -> withLatestPayments(queries.findByUser(userId, page, size)));
+    }
+
+    public BookingPage<BookingView> search(BookingSearch search, int page, int size) {
+        requireValidPage(page, size);
+        if (search.from() != null && search.to() != null && !search.from().isBefore(search.to())) {
+            throw new IllegalArgumentException("from must be before to");
+        }
+        var normalized = new BookingSearch(search.status(), search.showtimeId(), search.userId(),
+            normalizeCode(search.code()), search.from(), search.to());
+        return transactions.read(() -> withLatestPayments(queries.search(normalized, page, size)));
     }
 
     /** Owners see their own bookings, admins see all; anyone else gets 404 so ids are not probed. */
@@ -38,6 +52,24 @@ public class BookingQueryService {
                 .orElseThrow(BookingNotFoundException::new);
             return BookingView.of(booking, latestPayment(booking));
         });
+    }
+
+    /** Loads the payments of a whole page at once, so the query count does not grow with the page size. */
+    private BookingPage<BookingView> withLatestPayments(BookingPage<Booking> bookings) {
+        var ids = bookings.content().stream().map(Booking::id).toList();
+        Map<Integer, PaymentTransaction> latest = ids.isEmpty() ? Map.of() : payments.findByBookingIds(ids).stream()
+            .collect(Collectors.toMap(PaymentTransaction::bookingId, Function.identity(),
+                BinaryOperator.maxBy(Comparator.comparing(PaymentTransaction::id))));
+        return bookings.map(booking -> BookingView.of(booking, latest.get(booking.id())));
+    }
+
+    private static void requireValidPage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page must be >= 0 and size 1..100");
+    }
+
+    /** Booking codes are generated in upper case. */
+    private static String normalizeCode(String code) {
+        return code == null || code.isBlank() ? null : code.strip().toUpperCase(Locale.ROOT);
     }
 
     private PaymentTransaction latestPayment(Booking booking) {
