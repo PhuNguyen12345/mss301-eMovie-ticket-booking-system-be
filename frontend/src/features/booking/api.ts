@@ -22,9 +22,32 @@ export const bookingSchema = z.object({
   totalAmount: amount,
   bookingTime: z.string(),
   expiredAt: z.string(),
+  ticket: z
+    .object({
+      movieTitle: z.string(),
+      moviePosterUrl: z.string().nullable(),
+      startTime: z.string(),
+      endTime: z.string(),
+      cinemaName: z.string(),
+      screenName: z.string(),
+    })
+    .nullish(),
+  combos: z
+    .array(
+      z.object({
+        comboId: id,
+        name: z.string(),
+        quantity: z.number().int().positive(),
+        price: amount,
+      }),
+    )
+    .optional(),
   seats: z.array(
     z.object({
       seatId: id,
+      rowCode: z.string().nullish(),
+      seatNumber: z.number().int().positive().nullish(),
+      seatTypeName: z.string().nullish(),
       price: amount,
       status: z.enum(["HELD", "BOOKED", "RELEASED"]),
     }),
@@ -59,8 +82,35 @@ export const refundSchema = z.object({
 export type Booking = z.infer<typeof bookingSchema>;
 export type SeatMap = z.infer<typeof seatMapSchema>;
 export type Refund = z.infer<typeof refundSchema>;
+export type BookingSearch = {
+  code?: string;
+  status?: string;
+  userId?: number;
+  showtimeId?: number;
+  from?: string;
+  to?: string;
+  page: number;
+  size: number;
+};
 export function createBookingApi(client: HttpClient) {
   return {
+    search: (filters: BookingSearch, signal?: AbortSignal) => {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      });
+      return client.request(`/bookings?${params}`, pageSchema(bookingSchema), {
+        signal,
+      });
+    },
+    replaceCombos: (
+      id: number,
+      combos: { comboId: number; quantity: number }[],
+    ) =>
+      client.request(`/bookings/${id}/combos`, bookingSchema, {
+        method: "PUT",
+        body: { combos },
+      }),
     showtime: (id: number, signal?: AbortSignal) =>
       client.request(`/showtimes/${id}`, showtimeSchema, { signal }),
     seats: (id: number, signal?: AbortSignal) =>

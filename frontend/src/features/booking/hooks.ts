@@ -76,7 +76,7 @@ export function useBookingActions(id: number) {
   const cache = useQueryClient();
   const accept = async (
     result: Booking,
-    _variables: void,
+    _variables: unknown,
     owner: Session | undefined,
   ) => {
     if (!owner) return;
@@ -110,10 +110,18 @@ export function useBookingActions(id: number) {
         queryKey: bookingKeys.detail(current?.user.userId, id),
       }),
   });
+  const combos = useMutation({
+    mutationFn: (lines: { comboId: number; quantity: number }[]) =>
+      booking.replaceCombos(id, lines),
+    onMutate: () => session.getSnapshot(),
+    onSuccess: accept,
+  });
   return {
     cancel,
     sync,
     pay,
-    pending: cancel.isPending || sync.isPending || pay.isPending,
+    combos,
+    pending:
+      cancel.isPending || sync.isPending || pay.isPending || combos.isPending,
   };
 }

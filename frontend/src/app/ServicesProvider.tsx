@@ -17,6 +17,8 @@ import { createDemoShowtimes } from "../features/showtimes/api/demo-showtimes";
 import { createHttpShowtimes } from "../features/showtimes/api/http-showtimes";
 import { createMovieApi } from "../features/movies/api";
 import { createBookingApi } from "../features/booking/api";
+import { createCinemaApi } from "../features/cinema/api";
+import { createComboApi } from "../features/combos/api";
 
 function createServices() {
   const session = createSessionStore();
@@ -35,6 +37,8 @@ function createServices() {
     client,
     movies: createMovieApi(client),
     booking: createBookingApi(client),
+    cinema: createCinemaApi(client),
+    combos: createComboApi(client),
     showtimes:
       mode === "api" ? createHttpShowtimes(client) : createDemoShowtimes(),
   };
