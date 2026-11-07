@@ -100,7 +100,7 @@ describe("HTTP boundary", () => {
     });
     await expect(
       client.request("/showtimes", z.unknown(), { signal: controller.signal }),
-    ).rejects.toBe(abort);
+    ).rejects.toBe(controller.signal.reason);
     expect(shouldRetryQuery(0, abort)).toBe(false);
   });
   it("preserves HTTP failure status when a proxy returns HTML", async () => {

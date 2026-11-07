@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { HttpClient } from "../../lib/http";
 import { pageSchema } from "../showtimes/model/contracts";
+import { creditSchema } from "../movie-management/api";
 
 export const movieSchema = z.object({
   id: z.number().int().positive(),
@@ -14,9 +15,10 @@ export const movieSchema = z.object({
   trailerUrl: z.string().nullish(),
   status: z.enum(["WILL_PRESENT", "PRESENTING", "EXPIRED"]),
   genres: z.array(z.object({ id: z.number(), name: z.string() })).optional(),
+  credits: z.array(creditSchema).optional(),
 });
 export type Movie = z.infer<typeof movieSchema>;
-export type MovieInput = Omit<Movie, "id" | "genres">;
+export type MovieInput = Omit<Movie, "id" | "genres" | "credits">;
 export type MovieSearch = {
   keyword: string;
   status: string;

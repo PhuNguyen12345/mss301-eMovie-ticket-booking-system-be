@@ -28,7 +28,7 @@ export const shouldRetryQuery = (count: number, error: Error) =>
 
 type ClientOptions = {
   baseUrl: string;
-  accessToken?: () => string | undefined;
+  accessToken?: () => string | undefined | Promise<string | undefined>;
   onUnauthorized?: (token: string) => void;
   fetcher?: typeof fetch;
   timeoutMs?: number;
@@ -38,6 +38,7 @@ type RequestOptions = {
   body?: unknown;
   signal?: AbortSignal;
   anonymous?: boolean;
+  timeoutMs?: number;
 };
 
 export function createHttpClient(options: ClientOptions) {
@@ -48,8 +49,13 @@ export function createHttpClient(options: ClientOptions) {
       schema: z.ZodType<T>,
       request: RequestOptions = {},
     ): Promise<T> {
-      const token = request.anonymous ? undefined : options.accessToken?.();
-      const timeout = AbortSignal.timeout(options.timeoutMs ?? 10000);
+      const token = request.anonymous
+        ? undefined
+        : await options.accessToken?.();
+      request.signal?.throwIfAborted();
+      const timeout = AbortSignal.timeout(
+        request.timeoutMs ?? options.timeoutMs ?? 10000,
+      );
       const signal = request.signal
         ? AbortSignal.any([request.signal, timeout])
         : timeout;
@@ -63,15 +69,18 @@ export function createHttpClient(options: ClientOptions) {
             credentials: "omit",
             headers: {
               Accept: "application/json",
-              ...(request.body !== undefined
+              ...(request.body !== undefined &&
+              !(request.body instanceof FormData)
                 ? { "Content-Type": "application/json" }
                 : {}),
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body:
-              request.body === undefined
-                ? undefined
-                : JSON.stringify(request.body),
+              request.body instanceof FormData
+                ? request.body
+                : request.body === undefined
+                  ? undefined
+                  : JSON.stringify(request.body),
           },
         );
       } catch (error) {
