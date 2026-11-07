@@ -73,8 +73,20 @@ export const router = createBrowserRouter([
           </AccessGate>
         ),
       },
-      { path: "register", element: pending("Đăng ký tài khoản") },
-      { path: "forgot-password", element: pending("Khôi phục mật khẩu") },
+      {
+        path: "register",
+        lazy: async () => ({
+          Component: (await import("../features/auth/RegistrationPage"))
+            .RegistrationPage,
+        }),
+      },
+      {
+        path: "forgot-password",
+        lazy: async () => ({
+          Component: (await import("../features/auth/ForgotPasswordPage"))
+            .ForgotPasswordPage,
+        }),
+      },
       {
         path: "admin",
         element: <AdminLayout />,
@@ -104,10 +116,25 @@ export const router = createBrowserRouter([
           },
           {
             path: "cinema",
-            element: pending("Quản lý rạp, phòng và loại ghế"),
+            lazy: async () => ({
+              Component: (await import("../features/cinema/CinemaAdminPage"))
+                .CinemaAdminPage,
+            }),
           },
-          { path: "orders", element: pending("Tra cứu đơn vé") },
-          { path: "promotions", element: pending("Combo và ưu đãi") },
+          {
+            path: "orders",
+            lazy: async () => ({
+              Component: (await import("../features/admin/OrdersPage"))
+                .OrdersPage,
+            }),
+          },
+          {
+            path: "promotions",
+            lazy: async () => ({
+              Component: (await import("../features/combos/ComboAdminPage"))
+                .ComboAdminPage,
+            }),
+          },
           { path: "reports", element: pending("Thống kê doanh thu") },
         ],
       },

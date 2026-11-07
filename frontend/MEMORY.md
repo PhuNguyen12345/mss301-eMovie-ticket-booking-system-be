@@ -17,16 +17,19 @@ Updated: 2026-11-07. Read this file before continuing FE work.
 
 | Dependency | Current state | Revisit when available |
 | --- | --- | --- |
-| Cinema / screen / seat types | cinema-service is a skeleton; issue #10 assigned to docong2708 | Replace numeric admin references with real selectors, show venue and seat-type names; wire cinema admin CRUD |
-| GET /api/screens/{id}/seats | Missing dependency of booking seat map / hold endpoints | Verify live seat selection, holds and availability conflicts; never fabricate seats on HTTP failure |
-| GET /api/screens/{id}, GET /api/cinemas/{id} | Missing dependencies of showtime creation/update | Verify real schedule creation/update after cinema deployment |
-| Auth compatibility | PR #13 pending: HS256 and /api/auth + /api/users aliases | Verify gateway login, customer/admin roles and profile with shared JWT settings |
-| Registration / forgotten password | Controllers exist, but gateway blocks register/verify, register/resend-otp, password/forgot, password/reset | Replace auth placeholders after all four public POST routes are enabled; implement full OTP flow, not registration alone |
-| Per-seat-type pricing | GET/PUT /api/showtimes/{id}/seat-prices in PR #14 | Merge/deploy and verify booking uses overrides, not only basePrice |
-| Combos / vouchers | Database schema only, no API | Add catalogue, booking modifications and server-authoritative totals; do not calculate discounts locally |
+| Cinema / screen / seat types | Merged in master; connected to /admin/cinema, dependent showtime selectors and customer venue names/filter | No delete or seat-position/type update endpoints; do not invent those operations |
+| GET /api/screens/{id}/seats | Available; real physical seat creation and booking hold verified | Keep physical status separate from per-showtime availability |
+| GET /api/screens/{id}, GET /api/cinemas/{id} | Available; real showtime creation verified | Keep screen selection scoped to its cinema |
+| Auth compatibility | HS256 and /api/auth + /api/users aliases merged; live login verified | Tokens still remain in memory |
+| Registration / forgotten password | Gateway routes enabled; full registration, resend, verify, forgot/reset connected | OTP sender wiring fix is included on this FE branch; carry it into deployment with these screens |
+| Per-seat-type pricing | Merged and connected to live seat-type catalogue | Live hold verified override price 125000 rather than base price 90000 |
+| Combos | Public/admin catalogue, create/update, activate/deactivate and booking replacement connected | Backend controls totals and disallows changes while a payment link is pending |
+| Vouchers | Database schema only, no API | Add server-authoritative discount application when available |
 | Profile updates | GET /api/users/me exists; update API missing | Replace read-only profile placeholder with an edit form |
 | Server logout | Refresh-token revocation API missing | Replace local session clear with server revocation; do not claim all sessions revoked |
-| Admin booking search / reporting | No endpoints | Wire order search and real revenue statistics; do not derive totals from one page |
+| Admin booking search | GET /api/bookings merged and connected to /admin/orders with code/status/user/showtime/date filters | Search and pagination run on the server; private cache includes user identity |
+| Reporting | No endpoints | Add real revenue statistics; do not derive totals from one page |
+| Ticket details | Booking response now includes ticket, named seats and combos | Render stored ticket snapshot first; older bookings fall back to catalogue lookup |
 | Ticket check-in | No validation/check-in endpoint | Add check-in only with server-issued validation; bookingCode is a reference, not a fabricated secure ticket |
 | Cancel paid showtime | No cross-service booking/refund workflow | Coordinate cancellation policy with booking before offering automatic refunds |
 
@@ -61,8 +64,14 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
 - `/admin/showtimes`: schedule create/update/cancel and per-seat-type prices.
 - `/admin/movies`: list/create/update movie metadata and publication status.
 - `/admin/refunds`: pending/completed/rejected list and manual-completion confirmation.
-- Registration, forgot-password, cinema administration, order search, promotions,
-  reports, profile editing and check-in are explicit placeholders.
+- `/register`, `/forgot-password`: real email OTP registration/resend/verification
+  and password reset. Success requires the final verification/reset API response.
+- `/admin/cinema`: create/update cinemas, screens and seat types; create physical
+  seats; change cinema/screen/seat status. A status change does not refund bookings.
+- `/admin/orders`: admin booking search with server-side pagination and filters.
+- `/admin/promotions`: combo create/update and activate/deactivate; customers can
+  select combos in pending bookings before payment, using backend totals.
+- Vouchers, reports, profile editing and check-in remain explicit placeholders.
 - Movie genres/persons/credits editing and multipart poster upload have backend
   APIs but are not yet exposed as dedicated FE admin screens. Movie poster/trailer
   URL fields are editable. Keep these distinct from missing-backend placeholders.
@@ -76,28 +85,32 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
 
 ## Running local backend (2026-11-07)
 
-- Runtime snapshot: `.worktrees/local-runtime` under the main repository. Backend
-  source is `b2fbd0f`; user-service and compose are from PR #13 at `83b98a9`.
-  PR #13 was not merged. This directory is ignored and is specific to this machine.
+- FE branch includes master through `2d927c6` (including booking search, combos,
+  clean booking refactor and ticket snapshots). The default branch is `master`.
+- Runtime snapshot: `.worktrees/local-runtime` under the main repository, updated
+  to the same backend APIs. This directory is ignored and specific to this machine.
 - Start from that directory with `docker compose -p emovie-local -f compose.yml
   -f compose.local.yml up -d`. Gateway: `http://127.0.0.1:8080`; MailHog:
   `http://127.0.0.1:8026`; frontend using live APIs: `http://127.0.0.1:5174`.
-  Port 5173 remains the explicit visual demo.
-- Four MySQL databases run with persistent Docker volumes: user, movie, showtime,
-  booking. Four sample movies were created through the movie API. Local admin and
+  Start the FE with `VITE_DATA_MODE=api npm run dev -- --port 5174 --strictPort`.
+  Port 5173 can be used for the separate explicit visual demo.
+- Five MySQL databases run with persistent Docker volumes: user, movie, showtime,
+  booking and cinema. Four sample movies were created through the movie API. Local admin and
   customer accounts were registered and OTP-verified using MailHog. Credentials
   are in runtime `.local-credentials.json` (private, ignored; never commit it).
-- Runtime-only fixes: invalid compose JWT interpolation; three OTP email senders
-  missing `OtpDeliveryPort` implementation and `eventType()`, causing
-  `No projection handler`. These fixes still need to be incorporated upstream.
-- Public registration verification/resend remain blocked at the gateway; the
-  local bootstrap verified accounts directly inside user-service. Do not remove
-  the FE registration placeholder based on this local bootstrap.
-- Verified against actual HTTP APIs and MySQL: movie create/list, admin/customer
-  login, profile, empty booking history, empty showtime list and empty refunds.
-  Live Chromium also passed catalogue, both account roles, admin movie/refund
-  screens and mobile layout without HTTP mocks. Local artifacts are in frontend
-  `test-results/live-*`; runtime `local-checks.json` records the API checks.
-- Cinema/screen/seat APIs are still absent. No showtimes/bookings were fabricated.
-  Seat holds and real PayOS checkout remain unverified and unavailable until
-  cinema dependencies and payment credentials are configured.
+- The three OTP email senders originally omitted `OtpDeliveryPort` and `eventType`,
+  causing `No projection handler`. The fix and a concrete-adapter discovery test
+  are now committed with this branch; runtime uses the same fix. Compose JWT
+  interpolation is already corrected in master.
+- Validation: 18 FE unit tests, 31 browser contract tests, production build and
+  formatting pass; 9 focused Java OTP tests pass. Contract browser tests use mocks.
+- Live Chromium separately verified real gateway/MySQL flows without mocks:
+  registration + MailHog OTP verification, password reset + OTP, admin login,
+  cinema/screen/seat-type/seat creation, showtime creation and price override,
+  customer seat hold, ticket snapshot, combo creation/selection, booking cancel,
+  admin search and mobile layout. Confirmed total: 125000 + 2 * 45000 = 215000.
+- Live artifacts: runtime `live-results/report.json`, `cinema.png`, `booking.png`,
+  `orders-mobile.png`. The live-test account is private `.integration-account.json`;
+  do not commit credentials. The test booking was cancelled; its seat is released.
+- Real PayOS checkout and Cloudinary uploads still need credentials and remain
+  unverified. No payment was simulated or marked paid in the database.

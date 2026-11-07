@@ -1,3 +1,4 @@
+import { cinemaResponse } from "./cinema-fixtures";
 import { test, expect, type Page } from "@playwright/test";
 const movie = {
   id: 1,
@@ -103,6 +104,8 @@ async function mockApi(page: Page) {
           body: request.postData() ? request.postDataJSON() : null,
           authorization: request.headers().authorization,
         });
+      const catalogue = cinemaResponse(url.pathname);
+      if (catalogue !== undefined) return send(catalogue);
       if (path === "/api/auth/login")
         return send({
           accessToken: `token-${state.userId}`,
@@ -429,7 +432,7 @@ test("admin edits movies using the existing API and placeholders never call abse
     title: "Interstellar - Bản mới",
     durationMinutes: 120,
   });
-  await page.getByRole("link", { name: "Rạp & phòng" }).click();
+  await page.getByRole("link", { name: "Thống kê" }).click();
   await expect(page.getByText("Sắp có", { exact: true })).toBeVisible();
   expect(
     state.requests.some((path) =>
