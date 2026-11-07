@@ -99,9 +99,17 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
     "totalAmount": 240000.00,
     "bookingTime": "2027-01-20T18:00:00",
     "expiredAt": "2027-01-20T18:05:00",
+    "ticket": {
+      "movieTitle": "Dune",
+      "moviePosterUrl": "https://example.com/dune.jpg",
+      "startTime": "2027-01-21T19:00:00",
+      "endTime": "2027-01-21T21:30:00",
+      "cinemaName": "Rạp Hà Nội",
+      "screenName": "Phòng chiếu 1"
+    },
     "seats": [
-      {"seatId": 101, "price": 90000.00, "status": "HELD"},
-      {"seatId": 102, "price": 150000.00, "status": "HELD"}
+      {"seatId": 101, "rowCode": "A", "seatNumber": 1, "seatTypeName": "Ghế thường", "price": 90000.00, "status": "HELD"},
+      {"seatId": 102, "rowCode": "C", "seatNumber": 1, "seatTypeName": "Ghế VIP", "price": 150000.00, "status": "HELD"}
     ],
     "combos": [],
     "payment": null
@@ -110,6 +118,12 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
 ```
 
 Lỗi: `409 "One or more selected seats are no longer available"` khi có người giữ ghế trước.
+
+**Thông tin vé là bản sao lúc giữ ghế.** `ticket`, `rowCode`, `seatNumber`, `seatTypeName` và tên combo không đổi theo danh mục về sau, kể cả khi phim đổi tên hay suất chiếu dời giờ. Vì vậy mọi API đọc booking không gọi service khác, và vẫn chạy khi các service đó lỗi.
+
+Khi giữ ghế, nếu không lấy được thông tin phim, rạp, phòng hoặc loại ghế thì trả 503 và không tạo booking.
+
+Booking tạo trước khi có tính năng này trả `ticket: null`, các field ghế mới cũng `null`. `moviePosterUrl` có thể `null` nếu phim chưa có poster.
 
 ### 2.3 Lịch sử, chi tiết, hủy
 
@@ -200,7 +214,7 @@ Trả về booking với `totalAmount` = tiền ghế + tiền combo, và danh s
 {"combos": [{"comboId": 5, "name": "Bắp nước", "quantity": 2, "price": 85000.00}]}
 ```
 
-Đổi giá combo sau đó không ảnh hưởng booking đã thêm. Còn `name` lấy theo tên hiện tại của combo.
+Đổi giá hoặc tên combo sau đó không ảnh hưởng booking đã thêm. Nếu khách sửa lại combo khi đang chờ thanh toán, combo nhận giá và tên hiện tại.
 
 | HTTP | Khi nào |
 | --- | --- |
@@ -330,7 +344,7 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | `BOOKING_MAX_SEATS` | `8` | Số ghế tối đa / booking |
 | `BOOKING_EXPIRY_SCAN_INTERVAL` | `PT30S` | Chu kỳ job hết hạn + đối soát |
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
-| `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
+| `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
 | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
 
@@ -392,13 +406,16 @@ BOOKING_TEST_DB_URL=jdbc:mysql://127.0.0.1:33099/booking_test ./mvnw -pl service
 
 ## 7. API phụ thuộc từ service khác
 
-Booking gọi qua OpenFeign (`infrastructure/client`). Cả 3 endpoint dưới đây đều đã có.
+Booking gọi qua OpenFeign (`infrastructure/client`), chỉ khi xem sơ đồ ghế và khi giữ ghế. Mọi endpoint dưới đây đều đã có.
 
 | Service | Endpoint | Field booking dùng | Dùng để |
 | --- | --- | --- | --- |
-| Showtime | `GET /api/showtimes/{id}` | `id`, `screenId`, `startTime`, `basePrice`, `status` | Kiểm tra suất chiếu còn mở bán, lấy phòng và giá gốc |
+| Showtime | `GET /api/showtimes/{id}` | `id`, `movieId`, `cinemaId`, `screenId`, `startTime`, `endTime`, `basePrice`, `status` | Kiểm tra suất chiếu còn mở bán, lấy phòng, giá gốc và thông tin vé |
 | Showtime | `GET /api/showtimes/{id}/seat-prices` | `id`, `seatTypeId`, `price` | Giá theo loại ghế |
 | Cinema | `GET /api/screens/{screenId}/seats` | `id`, `screenId`, `rowCode`, `seatNumber`, `seatTypeId`, `status` | Sơ đồ ghế vật lý |
+| Movie | `GET /api/movies/{id}` | `title`, `posterUrl` | Thông tin vé |
+| Cinema | `GET /api/cinemas/{id}`, `GET /api/screens/{id}` | `name` | Thông tin vé |
+| Cinema | `GET /api/seat-types` | `id`, `name` | Tên loại ghế trên vé |
 
 - Ghế có `status` khác `ACTIVE`, ví dụ `MAINTENANCE`, hiển thị `UNAVAILABLE` và không giữ được.
 - Loại ghế không có giá riêng thì dùng `basePrice`. Nếu có giá riêng, `id` của dòng giá được lưu vào `booking_seats.showtime_seat_id`.
@@ -417,6 +434,9 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `booking_seats.active_flag` (generated) | Chỉ ghế `HELD`/`BOOKED` tham gia unique index |
 | `payment_transactions.order_code` | `orderCode` số nguyên PayOS yêu cầu, unique, dùng tra cứu khi nhận webhook |
 | `payment_transactions.payment_link_id`, `checkout_url` | Lấy lại link đang mở thay vì tạo link mới |
+| `bookings.movie_title`, `movie_poster_url`, `start_time`, `end_time`, `cinema_name`, `screen_name` | Bản sao thông tin vé lúc giữ ghế. `NULL` với booking cũ |
+| `booking_seats.row_code`, `seat_number`, `seat_type_name` | Bản sao thông tin ghế. `NULL` với booking cũ |
+| `booking_combos.combo_name` | Giữ tên combo lúc mua |
 
 `idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
 
