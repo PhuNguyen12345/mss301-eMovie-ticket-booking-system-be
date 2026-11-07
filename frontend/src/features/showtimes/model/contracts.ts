@@ -71,6 +71,7 @@ export interface ShowtimeRepository {
   movies(signal?: AbortSignal): Promise<Movie[]>;
   prices(id: number, signal?: AbortSignal): Promise<SeatPrice[]>;
   create(input: CreateShowtime): Promise<Showtime>;
+  update(id: number, input: CreateShowtime): Promise<Showtime>;
   replacePrices(id: number, prices: PriceInput[]): Promise<SeatPrice[]>;
   cancel(id: number): Promise<Showtime>;
 }

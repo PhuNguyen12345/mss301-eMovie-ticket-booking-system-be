@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiError, type HttpClient } from "../../lib/http";
+import { type HttpClient } from "../../lib/http";
 
 const loginSchema = z.object({
   accessToken: z.string().min(1),
@@ -49,11 +49,6 @@ export function createSessionStore() {
         signal,
       });
       if (requestVersion !== version) return;
-      if (!result.user.roles.includes("ADMIN"))
-        throw new ApiError(
-          403,
-          "Cần tài khoản quản trị để sử dụng màn hình này.",
-        );
       current = {
         token: result.accessToken,
         expiresAt: Date.now() + result.expiresIn * 1000,

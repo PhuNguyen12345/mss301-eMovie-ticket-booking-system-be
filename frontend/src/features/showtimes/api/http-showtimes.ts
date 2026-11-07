@@ -53,6 +53,11 @@ export function createHttpShowtimes(client: HttpClient): ShowtimeRepository {
       }),
     create: (body) =>
       client.request("/showtimes", showtimeSchema, { method: "POST", body }),
+    update: (id, body) =>
+      client.request(`/showtimes/${id}`, showtimeSchema, {
+        method: "PUT",
+        body,
+      }),
     replacePrices: (id, body) =>
       client.request(`/showtimes/${id}/seat-prices`, z.array(seatPriceSchema), {
         method: "PUT",

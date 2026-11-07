@@ -72,6 +72,24 @@ export function createDemoShowtimes(): ShowtimeRepository {
       persist(shows.map((s) => (s.id === id ? { ...s, prices } : s)));
       return prices;
     },
+    async update(id, input) {
+      const { show, shows } = find(id);
+      if (show.status !== "SCHEDULED" || hasStarted(show.startTime))
+        throw new ApiError(
+          409,
+          "Suất chiếu đã hủy hoặc bắt đầu, không thể sửa.",
+        );
+      const updated = {
+        ...createShow(
+          shows.filter((s) => s.id !== id),
+          input,
+        ),
+        id,
+        prices: show.prices,
+      };
+      persist(shows.map((s) => (s.id === id ? updated : s)));
+      return updated;
+    },
     async cancel(id) {
       const { show, shows } = find(id);
       if (show.status !== "CANCELLED" && hasStarted(show.startTime))

@@ -51,6 +51,14 @@ export function useCancelShowtime() {
     onSuccess: () => client.invalidateQueries({ queryKey: showtimeKeys.lists }),
   });
 }
+export function useUpdateShowtime(id?: number) {
+  const { showtimes } = useServices();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateShowtime) => showtimes.update(id!, input),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["showtimes"] }),
+  });
+}
 export function useReplaceSeatPrices(id: number) {
   const { showtimes } = useServices();
   const client = useQueryClient();
