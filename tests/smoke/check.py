@@ -89,12 +89,12 @@ for invalid in [
 call('GET', '/api/movies', 401, auth=token(changes={'exp': int(time.time()) - 120}))
 
 spoofed = {'X-User-Id': 'evil', 'X-User-Roles': 'ADMIN', 'X-Role': 'ADMIN', 'X-User-Email': 'evil@example.com'}
-data, _ = call('GET', '/api/bookings?mine=true', auth=customer, headers=spoofed)
+data, _ = call('GET', '/api/bookings/me', auth=customer, headers=spoofed)
 forwarded = {key.lower(): value for key, value in data['data']['headers'].items()}
 assert forwarded['x-user-id'] == '42'
 assert forwarded['x-user-roles'] == 'CUSTOMER'
 assert 'authorization' not in forwarded and 'x-role' not in forwarded and 'x-user-email' not in forwarded
-assert data['data']['path'] == '/api/bookings?mine=true'
+assert data['data']['path'] == '/api/bookings/me'
 data, _ = call('POST', '/api/auth/login', body={}, headers=spoofed)
 forwarded = {key.lower(): value for key, value in data['data']['headers'].items()}
 assert not any(key.startswith('x-user-') or key == 'x-role' for key in forwarded)
