@@ -1,13 +1,15 @@
 package fu.mss301.showtime.controller;
 
-import fu.mss301.common.dto.PageResponseDTO;
-import fu.mss301.showtime.dto.ShowtimeResponseDTO;
-import fu.mss301.showtime.enums.ShowtimeStatus;
-import fu.mss301.showtime.exception.ShowtimeConflictException;
-import fu.mss301.showtime.exception.ShowtimeExceptionHandler;
-import fu.mss301.showtime.exception.ShowtimeNotFoundException;
-import fu.mss301.showtime.exception.UpstreamServiceException;
-import fu.mss301.showtime.service.ShowtimeService;
+import fu.mss301.showtime.presentation.controller.*;
+
+import fu.mss301.showtime.application.dto.ShowtimePage;
+import fu.mss301.showtime.application.dto.ShowtimeView;
+import fu.mss301.showtime.domain.model.ShowtimeStatus;
+import fu.mss301.showtime.domain.exception.ShowtimeConflictException;
+import fu.mss301.showtime.presentation.exception.ShowtimeExceptionHandler;
+import fu.mss301.showtime.application.exception.ShowtimeNotFoundException;
+import fu.mss301.showtime.application.exception.UpstreamServiceException;
+import fu.mss301.showtime.application.usecase.ShowtimeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -38,7 +40,7 @@ class ShowtimeControllerTests {
     @Test
     void defaultPaginationUsesSharedEnvelope() throws Exception {
         when(service.getShowtimes(null, null, null, null, null, null, 0, 10))
-            .thenReturn(new PageResponseDTO<>(List.of(), 0, 10, 0, 0, true, true));
+            .thenReturn(new ShowtimePage(List.of(), 0, 10, 0, 0, true, true));
         mvc.perform(get("/api/showtimes")).andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value(200))
             .andExpect(jsonPath("$.data.data").isArray())
@@ -111,9 +113,9 @@ class ShowtimeControllerTests {
             .andExpect(status().isBadGateway()).andExpect(jsonPath("$.status").value(502));
     }
 
-    private ShowtimeResponseDTO response() {
+    private ShowtimeView response() {
         var start = LocalDateTime.of(2027, 1, 20, 18, 0);
-        return new ShowtimeResponseDTO(7L, 1, 1, 1, "Ha Noi", start, start.plusHours(2),
+        return new ShowtimeView(7L, 1, 1, 1, "Ha Noi", start, start.plusHours(2),
             new BigDecimal("85000"), ShowtimeStatus.SCHEDULED, start.minusDays(1), start.minusDays(1));
     }
 }
