@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
 import { ErrorMessage } from "../../components/ui/Feedback";
 import { Field } from "../../components/ui/Field";
+import { Link } from "react-router-dom";
 
 export function LoginDialog({ close }: { close: () => void }) {
   const session = useSession();
@@ -31,7 +32,7 @@ export function LoginDialog({ close }: { close: () => void }) {
     }
   }
   return (
-    <Dialog title="Đăng nhập quản trị" onClose={close} busy={pending}>
+    <Dialog title="Đăng nhập" onClose={close} busy={pending}>
       <form onSubmit={submit}>
         <fieldset disabled={pending}>
           <Field label="Email">
@@ -48,6 +49,16 @@ export function LoginDialog({ close }: { close: () => void }) {
           </Field>
         </fieldset>
         <ErrorMessage error={error} />
+        {!pending && (
+          <div className="auth-links">
+            <Link to="/register" onClick={close}>
+              Đăng ký tài khoản
+            </Link>
+            <Link to="/forgot-password" onClick={close}>
+              Quên mật khẩu?
+            </Link>
+          </div>
+        )}
         <div className="dialog-actions">
           <Button onClick={close} disabled={pending}>
             Đóng

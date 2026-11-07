@@ -25,6 +25,7 @@ type Props = {
   onBusyChange: (busy: boolean) => void;
   notify: (message: string) => void;
   onCancel: () => void;
+  onEdit: () => void;
 };
 export function PricePanel(props: Props) {
   const query = useSeatPrices(props.show.id);
@@ -74,6 +75,15 @@ export function PricePanel(props: Props) {
             ? "Suất chiếu đã hủy"
             : "Áp dụng cho suất chiếu này"}
         </span>
+        {props.show.status === "SCHEDULED" && (
+          <Button
+            variant="ghost"
+            disabled={!props.canWrite || hasStarted(props.show.startTime)}
+            onClick={props.onEdit}
+          >
+            Sửa suất chiếu
+          </Button>
+        )}
         {props.show.status === "SCHEDULED" && (
           <Button
             variant="ghost"

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Film, Plus, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { Plus, RefreshCw } from "lucide-react";
 import { useSession } from "../../../app/ServicesProvider";
-import { LoginDialog } from "../../auth/LoginDialog";
+import { useNavigationGuard } from "../../../lib/useNavigationGuard";
 import { Button } from "../../../components/ui/Button";
 import { Field } from "../../../components/ui/Field";
 import {
@@ -30,7 +30,7 @@ export function ShowtimesPage() {
   const [editorVersion, setEditorVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<"create" | "cancel" | "login" | null>(
+  const [dialog, setDialog] = useState<"create" | "cancel" | "edit" | null>(
     null,
   );
   const selected =
@@ -39,15 +39,7 @@ export function ShowtimesPage() {
   const selectedMovie = movies.data?.find(
     (movie) => movie.id === selected?.movieId,
   );
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  useNavigationGuard(dirty || busy);
   function navigate(action: () => void) {
     if (busy) return;
     if (dirty && !window.confirm("Bỏ thay đổi giá chưa lưu?")) return;
@@ -57,29 +49,6 @@ export function ShowtimesPage() {
   }
   return (
     <>
-      <header className="topbar">
-        <a href="/" className="brand">
-          <Film size={23} />
-          <strong>eMovie</strong>
-          <span>Quản trị</span>
-        </a>
-        <div className="topbar-actions">
-          {session.mode === "demo" ? (
-            <span className="badge badge-demo">Dữ liệu demo</span>
-          ) : session.current ? (
-            <>
-              <span className="account-name">
-                {session.current.user.fullName}
-              </span>
-              <Button onClick={() => navigate(session.logout)}>
-                Đăng xuất
-              </Button>
-            </>
-          ) : (
-            <Button onClick={() => setDialog("login")}>Đăng nhập</Button>
-          )}
-        </div>
-      </header>
       <main className="page">
         <div className="page-heading">
           <div>
@@ -170,6 +139,7 @@ export function ShowtimesPage() {
               onBusyChange={setBusy}
               notify={toast.notify}
               onCancel={() => navigate(() => setDialog("cancel"))}
+              onEdit={() => navigate(() => setDialog("edit"))}
             />
           ) : (
             <aside className="price-panel no-selection">
@@ -182,10 +152,10 @@ export function ShowtimesPage() {
         </div>
       </main>
       <Toast message={toast.message} dismiss={toast.dismiss} />
-      {dialog === "login" && <LoginDialog close={() => setDialog(null)} />}
-      {dialog === "create" && session.canWrite && (
+      {(dialog === "create" || dialog === "edit") && session.canWrite && (
         <CreateShowtimeDialog
           filters={calendar.filters}
+          show={dialog === "edit" ? selected : undefined}
           movies={movies.data ?? []}
           close={() => setDialog(null)}
           created={(show) => {
@@ -198,7 +168,11 @@ export function ShowtimesPage() {
             });
             setSelectedId(show.id);
             setDialog(null);
-            toast.notify("Đã tạo suất chiếu.");
+            toast.notify(
+              dialog === "edit"
+                ? "Đã cập nhật suất chiếu."
+                : "Đã tạo suất chiếu.",
+            );
           }}
         />
       )}

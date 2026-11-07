@@ -4,7 +4,10 @@ import { Dialog } from "../../../components/ui/Dialog";
 import { ErrorMessage } from "../../../components/ui/Feedback";
 import { Field } from "../../../components/ui/Field";
 import { hasStarted, localDate } from "../../../lib/date";
-import { useCreateShowtime } from "../hooks/useShowtimeQueries";
+import {
+  useCreateShowtime,
+  useUpdateShowtime,
+} from "../hooks/useShowtimeQueries";
 import { parsePriceDraft } from "../hooks/usePriceDraft";
 import type { Movie, Showtime, ShowtimeFilters } from "../model/contracts";
 
@@ -13,13 +16,17 @@ export function CreateShowtimeDialog({
   movies,
   close,
   created,
+  show,
 }: {
   filters: ShowtimeFilters;
   movies: Movie[];
   close: () => void;
   created: (show: Showtime) => void;
+  show?: Showtime;
 }) {
-  const mutation = useCreateShowtime();
+  const create = useCreateShowtime();
+  const update = useUpdateShowtime(show?.id);
+  const mutation = show ? update : create;
   const [error, setError] = useState<unknown>(null);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,11 +53,19 @@ export function CreateShowtimeDialog({
     }
   }
   return (
-    <Dialog title="Tạo suất chiếu" onClose={close} busy={mutation.isPending}>
+    <Dialog
+      title={show ? "Sửa suất chiếu" : "Tạo suất chiếu"}
+      onClose={close}
+      busy={mutation.isPending}
+    >
       <form onSubmit={submit}>
         <fieldset disabled={mutation.isPending}>
           <Field label="Phim">
-            <select name="movie" defaultValue={filters.movieId ?? ""} required>
+            <select
+              name="movie"
+              defaultValue={show?.movieId ?? filters.movieId ?? ""}
+              required
+            >
               <option value="" disabled>
                 Chọn phim
               </option>
@@ -70,13 +85,19 @@ export function CreateShowtimeDialog({
                 type="date"
                 min={localDate()}
                 defaultValue={
-                  filters.date < localDate() ? localDate() : filters.date
+                  show?.startTime.slice(0, 10) ??
+                  (filters.date < localDate() ? localDate() : filters.date)
                 }
                 required
               />
             </Field>
             <Field label="Giờ bắt đầu">
-              <input name="time" type="time" defaultValue="18:00" required />
+              <input
+                name="time"
+                type="time"
+                defaultValue={show?.startTime.slice(11, 16) ?? "18:00"}
+                required
+              />
             </Field>
             <Field label="Mã rạp">
               <input
@@ -84,7 +105,7 @@ export function CreateShowtimeDialog({
                 type="number"
                 min="1"
                 step="1"
-                defaultValue={filters.cinemaId ?? 1}
+                defaultValue={show?.cinemaId ?? filters.cinemaId ?? 1}
                 required
               />
             </Field>
@@ -94,7 +115,7 @@ export function CreateShowtimeDialog({
                 type="number"
                 min="1"
                 step="1"
-                defaultValue={filters.screenId ?? 1}
+                defaultValue={show?.screenId ?? filters.screenId ?? 1}
                 required
               />
             </Field>
@@ -103,7 +124,7 @@ export function CreateShowtimeDialog({
             <input
               name="price"
               inputMode="decimal"
-              defaultValue="90000"
+              defaultValue={show?.basePrice ?? 90000}
               required
             />
           </Field>
@@ -114,7 +135,7 @@ export function CreateShowtimeDialog({
             Đóng
           </Button>
           <Button variant="primary" type="submit" pending={mutation.isPending}>
-            Tạo suất chiếu
+            {show ? "Lưu suất chiếu" : "Tạo suất chiếu"}
           </Button>
         </div>
       </form>
