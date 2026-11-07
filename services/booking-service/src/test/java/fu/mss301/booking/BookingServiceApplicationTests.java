@@ -17,10 +17,13 @@ import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
+import fu.mss301.booking.application.exception.UpstreamServiceException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.RefundAdminUseCase;
 import fu.mss301.booking.application.port.DomainEvents;
+import fu.mss301.booking.application.port.CinemaCatalog;
+import fu.mss301.booking.application.port.MovieCatalog;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.PaymentGateway.CheckoutLink;
 import fu.mss301.booking.application.port.PaymentGateway.LinkState;
@@ -104,6 +107,8 @@ class BookingServiceApplicationTests {
 
     @MockitoBean private ShowtimeCatalog showtimes;
     @MockitoBean private SeatLayoutProvider seatLayout;
+    @MockitoBean private MovieCatalog movies;
+    @MockitoBean private CinemaCatalog cinemas;
     @MockitoBean private PaymentGateway gateway;
 
     private Long showtimeId;
@@ -114,9 +119,13 @@ class BookingServiceApplicationTests {
         showtimeId = SHOWTIME_IDS.incrementAndGet();
         LocalDateTime start = LocalDateTime.now(clock).plusDays(1);
         when(showtimes.getShowtime(showtimeId))
-            .thenReturn(new ShowtimeSnapshot(showtimeId, 3, start, new BigDecimal("90000"), true));
+            .thenReturn(new ShowtimeSnapshot(showtimeId, 8, 2, 3, start, start.plusHours(2), new BigDecimal("90000"), true));
         when(showtimes.getSeatPrices(showtimeId))
             .thenReturn(Map.of(2, new SeatTypePrice(77, 2, new BigDecimal("150000"))));
+        when(movies.getMovie(8)).thenReturn(new MovieCatalog.MovieInfo("Dune", "https://img/dune.jpg"));
+        when(cinemas.cinemaName(2)).thenReturn("Rạp Hà Nội");
+        when(cinemas.screenName(3)).thenReturn("Phòng chiếu 1");
+        when(cinemas.seatTypeNames()).thenReturn(Map.of(1, "Ghế thường", 2, "Ghế VIP"));
         when(seatLayout.getSeats(3)).thenReturn(List.of(
             new PhysicalSeat(101, "A", 1, 1, true),
             new PhysicalSeat(102, "A", 2, 2, true),
@@ -365,7 +374,8 @@ class BookingServiceApplicationTests {
         var stored = queries.getBooking(7, false, booking.id());
         assertEquals(new BigDecimal("85000.00"), stored.combos().getFirst().price());
         assertEquals(new BigDecimal("175000.00"), stored.totalAmount());
-        assertEquals("Combo đổi tên " + combo, stored.combos().getFirst().name());
+        assertTrue(stored.combos().getFirst().name().startsWith("Combo "));
+        assertFalse(stored.combos().getFirst().name().contains("đổi tên"));
     }
 
     @Test
@@ -534,6 +544,81 @@ class BookingServiceApplicationTests {
         statistics.clear();
         assertEquals(8, queries.search(new BookingSearch(null, null, user, null, null, null), 0, 100).content().size());
         assertEquals(forTwo, statistics.getPrepareStatementCount());
+    }
+
+    @Test
+    void holdStoresWhatTheTicketShows() {
+        var booking = holdSeats.hold(uniqueUser(), showtimeId, List.of(102));
+        var stored = queries.getBooking(0, true, booking.id());
+
+        var start = jdbc.queryForObject("select start_time from bookings where id = ?", LocalDateTime.class, booking.id());
+        assertEquals(start, stored.ticket().startTime());
+        assertEquals(start.plusHours(2), stored.ticket().endTime());
+        assertEquals("Dune", stored.ticket().movieTitle());
+        assertEquals("https://img/dune.jpg", stored.ticket().moviePosterUrl());
+        assertEquals("Rạp Hà Nội", stored.ticket().cinemaName());
+        assertEquals("Phòng chiếu 1", stored.ticket().screenName());
+        var seat = stored.seats().getFirst();
+        assertEquals("A", seat.rowCode());
+        assertEquals(2, seat.seatNumber());
+        assertEquals("Ghế VIP", seat.seatTypeName());
+    }
+
+    @Test
+    void aSoldTicketDoesNotFollowCatalogChanges() {
+        var booking = holdSeats.hold(uniqueUser(), showtimeId, List.of(101));
+        when(movies.getMovie(8)).thenReturn(new MovieCatalog.MovieInfo("Tên mới", null));
+        when(cinemas.cinemaName(2)).thenReturn("Rạp mới");
+
+        var stored = queries.getBooking(0, true, booking.id());
+        assertEquals("Dune", stored.ticket().movieTitle());
+        assertEquals("https://img/dune.jpg", stored.ticket().moviePosterUrl());
+        assertEquals("Rạp Hà Nội", stored.ticket().cinemaName());
+    }
+
+    @Test
+    void readingBookingsNeverCallsOtherServices() {
+        int user = uniqueUser();
+        var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        clearInvocations(showtimes, seatLayout, movies, cinemas);
+        doThrow(new UpstreamServiceException("down")).when(movies).getMovie(any());
+        when(showtimes.getShowtime(any())).thenThrow(new UpstreamServiceException("down"));
+        when(cinemas.cinemaName(any())).thenThrow(new UpstreamServiceException("down"));
+
+        assertEquals("Dune", queries.getBooking(user, false, booking.id()).ticket().movieTitle());
+        assertEquals(1, queries.myBookings(user, 0, 10).content().size());
+        assertEquals(1, queries.search(new BookingSearch(null, showtimeId, null, null, null, null), 0, 10).content().size());
+        verify(showtimes, never()).getShowtime(any());
+        verifyNoInteractions(seatLayout, movies, cinemas);
+    }
+
+    @Test
+    void holdFailsWithoutCreatingABookingWhenTicketDetailsAreUnavailable() {
+        doThrow(new UpstreamServiceException("down")).when(movies).getMovie(8);
+        int user = uniqueUser();
+        assertThrows(UpstreamServiceException.class, () -> holdSeats.hold(user, showtimeId, List.of(101)));
+        assertEquals(0, queries.myBookings(user, 0, 10).totalElements());
+        assertEquals(Availability.AVAILABLE, availability(101));
+    }
+
+    @Test
+    void anInvalidSeatDoesNotCostTheExtraCalls() {
+        clearInvocations(movies, cinemas);
+        assertThrows(SeatUnavailableException.class, () -> holdSeats.hold(uniqueUser(), showtimeId, List.of(103)));
+        verifyNoInteractions(movies, cinemas);
+    }
+
+    @Test
+    void bookingsWithoutTicketDetailsStillLoad() {
+        var booking = holdSeats.hold(uniqueUser(), showtimeId, List.of(101));
+        jdbc.update("update bookings set movie_title = null, movie_poster_url = null, cinema_name = null, screen_name = null,"
+            + " start_time = null, end_time = null where id = ?", booking.id());
+        jdbc.update("update booking_seats set row_code = null, seat_number = null, seat_type_name = null where booking_id = ?",
+            booking.id());
+
+        var stored = queries.getBooking(0, true, booking.id());
+        assertNull(stored.ticket());
+        assertNull(stored.seats().getFirst().rowCode());
     }
 
     @Test

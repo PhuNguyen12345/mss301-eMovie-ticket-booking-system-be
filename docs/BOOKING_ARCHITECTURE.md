@@ -90,6 +90,15 @@ Repository adapter yêu cầu có transaction (`MANDATORY`) vì mapper phải đ
 
 Quy tắc "không sửa combo khi có payment `PENDING`" nằm ở `ReplaceBookingCombosUseCase` vì cần dữ liệu của 2 aggregate. Use case này khóa dòng booking trước, cùng thứ tự với `InitiatePaymentUseCase`, nên sửa combo và tạo link không thể chen vào nhau để ra link sai số tiền.
 
+## Thông tin vé
+
+Vé đã bán là bản sao cố định. `HoldSeatsUseCase` đọc phim, rạp, phòng và loại ghế từ các service khác, ngoài transaction, rồi lưu vào `TicketDetails`, `BookingSeat` và `BookingCombo`.
+
+- Đường đọc không gọi upstream. Không thêm lời gọi Feign vào `BookingQueryService`, vì `GET /api/bookings/me` và việc xem vé khi service khác lỗi đều dựa vào điều này.
+- Kiểm tra ghế trước khi đọc thông tin vé, để request không hợp lệ không tốn thêm lời gọi.
+- `Booking.ticket()` có thể `null` với booking cũ, còn booking mới luôn có.
+- Khi suất chiếu đổi giờ, vé không tự cập nhật. Khách xử lý theo nghiệp vụ ở issue #20.
+
 ## Logging
 
 `application` dùng `java.lang.System.Logger` để không phụ thuộc thư viện ngoài. Log đi qua JUL tới Logback nên vẫn có cùng định dạng.

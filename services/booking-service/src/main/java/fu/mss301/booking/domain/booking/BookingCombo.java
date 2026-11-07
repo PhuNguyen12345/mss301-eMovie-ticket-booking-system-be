@@ -3,8 +3,8 @@ package fu.mss301.booking.domain.booking;
 import java.math.BigDecimal;
 
 /**
- * Child entity of {@link Booking}: one combo line. {@code price} is the unit price at the time of purchase, so
- * later menu changes do not affect the booking. {@code name} is for display and is not stored on the line.
+ * Child entity of {@link Booking}: one combo line. {@code name} and {@code price} are copied at purchase, so
+ * later menu changes do not affect the booking.
  */
 public final class BookingCombo {
     private final Integer id;

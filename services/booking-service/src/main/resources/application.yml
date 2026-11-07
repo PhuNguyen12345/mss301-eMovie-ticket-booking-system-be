@@ -52,6 +52,7 @@ booking:
   expiry-batch-size: ${BOOKING_EXPIRY_BATCH_SIZE:100}
   clients:
     showtime-url: ${SHOWTIME_SERVICE_URL:}
+    movie-url: ${MOVIE_SERVICE_URL:}
     cinema-url: ${CINEMA_SERVICE_URL:}
 
 payos:

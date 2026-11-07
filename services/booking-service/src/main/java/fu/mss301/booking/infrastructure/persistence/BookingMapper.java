@@ -4,6 +4,7 @@ import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingCode;
 import fu.mss301.booking.domain.booking.BookingCombo;
 import fu.mss301.booking.domain.booking.BookingSeat;
+import fu.mss301.booking.domain.booking.TicketDetails;
 
 import java.util.Comparator;
 import java.util.Objects;
@@ -16,14 +17,22 @@ final class BookingMapper {
 
     static Booking toDomain(BookingEntity entity) {
         return Booking.restore(entity.getId(), entity.getUserId(), entity.getShowtimeId(),
-            new BookingCode(entity.getBookingCode()), entity.getBookingTime(), entity.getTotalAmount(),
+            new BookingCode(entity.getBookingCode()), ticket(entity), entity.getBookingTime(), entity.getTotalAmount(),
             entity.getStatus(), entity.getExpiredAt(), entity.getVersion(), entity.getCreatedAt(),
             entity.getUpdatedAt(), entity.getSeats().stream().map(seat -> BookingSeat.restore(seat.getId(),
-                seat.getShowtimeId(), seat.getShowtimeSeatId(), seat.getSeatId(), seat.getPrice(), seat.getStatus(),
-                seat.getCreatedAt(), seat.getUpdatedAt())).toList(),
+                seat.getShowtimeId(), seat.getShowtimeSeatId(), seat.getSeatId(), seat.getPrice(), seat.getRowCode(),
+                seat.getSeatNumber(), seat.getSeatTypeName(), seat.getStatus(), seat.getCreatedAt(),
+                seat.getUpdatedAt())).toList(),
             entity.getCombos().stream().map(combo -> BookingCombo.restore(combo.getId(), combo.getCombo().getId(),
-                    combo.getCombo().getName(), combo.getQuantity(), combo.getPrice()))
+                    combo.getName(), combo.getQuantity(), combo.getPrice()))
                 .sorted(Comparator.comparing(BookingCombo::comboId)).toList());
+    }
+
+    /** Bookings made before ticket details were stored have no copy. */
+    private static TicketDetails ticket(BookingEntity entity) {
+        if (entity.getMovieTitle() == null) return null;
+        return new TicketDetails(entity.getMovieTitle(), entity.getMoviePosterUrl(), entity.getCinemaName(),
+            entity.getScreenName(), entity.getStartTime(), entity.getEndTime());
     }
 
     static BookingEntity newEntity(Booking source) {
@@ -31,6 +40,13 @@ final class BookingMapper {
         entity.setUserId(source.userId());
         entity.setShowtimeId(source.showtimeId());
         entity.setBookingCode(source.bookingCode().value());
+        var ticket = source.ticket();
+        entity.setMovieTitle(ticket.movieTitle());
+        entity.setMoviePosterUrl(ticket.moviePosterUrl());
+        entity.setCinemaName(ticket.cinemaName());
+        entity.setScreenName(ticket.screenName());
+        entity.setStartTime(ticket.startTime());
+        entity.setEndTime(ticket.endTime());
         entity.setBookingTime(source.bookingTime());
         entity.setExpiredAt(source.expiredAt());
         entity.setCreatedAt(source.createdAt());
@@ -69,6 +85,7 @@ final class BookingMapper {
             .collect(Collectors.toMap(BookingComboEntity::getId, Function.identity()));
         for (BookingCombo combo : source.combos()) {
             var row = combo.id() == null ? newCombo(combo, target, comboReference) : rows.get(combo.id());
+            row.setName(combo.name());
             row.setQuantity(combo.quantity());
             row.setPrice(combo.price());
         }
@@ -90,6 +107,9 @@ final class BookingMapper {
         row.setShowtimeSeatId(seat.showtimeSeatId());
         row.setSeatId(seat.seatId());
         row.setPrice(seat.price());
+        row.setRowCode(seat.rowCode());
+        row.setSeatNumber(seat.seatNumber());
+        row.setSeatTypeName(seat.seatTypeName());
         row.setStatus(seat.status());
         row.setCreatedAt(seat.createdAt());
         row.setUpdatedAt(seat.updatedAt());

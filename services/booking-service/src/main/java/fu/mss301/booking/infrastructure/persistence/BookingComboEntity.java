@@ -25,6 +25,9 @@ public class BookingComboEntity {
     @JoinColumn(name = "combo_id", nullable = false, updatable = false)
     private ComboEntity combo;
 
+    @Column(name = "combo_name", nullable = false, length = 100)
+    private String name;
+
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 

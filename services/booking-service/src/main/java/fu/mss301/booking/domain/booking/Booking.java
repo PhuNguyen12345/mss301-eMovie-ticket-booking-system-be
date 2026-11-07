@@ -32,6 +32,7 @@ public final class Booking {
     private final Integer userId;
     private final Long showtimeId;
     private final BookingCode bookingCode;
+    private final TicketDetails ticket;
     private final LocalDateTime bookingTime;
     private BigDecimal totalAmount;
     private BookingStatus status;
@@ -43,13 +44,15 @@ public final class Booking {
     private final List<BookingCombo> combos;
     private final List<DomainEvent> events = new ArrayList<>();
 
-    private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, LocalDateTime bookingTime,
+    private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, TicketDetails ticket,
+                    LocalDateTime bookingTime,
                     BigDecimal totalAmount, BookingStatus status, LocalDateTime expiredAt, Integer version,
                     LocalDateTime createdAt, LocalDateTime updatedAt, List<BookingSeat> seats, List<BookingCombo> combos) {
         this.id = id;
         this.userId = userId;
         this.showtimeId = showtimeId;
         this.bookingCode = bookingCode;
+        this.ticket = ticket;
         this.bookingTime = bookingTime;
         this.totalAmount = totalAmount;
         this.status = status;
@@ -61,10 +64,12 @@ public final class Booking {
         this.combos = new ArrayList<>(combos);
     }
 
-    public static Booking hold(Integer userId, Long showtimeId, List<SeatSelection> selections, int maxSeats,
+    public static Booking hold(Integer userId, Long showtimeId, TicketDetails ticket, List<SeatSelection> selections,
+                               int maxSeats,
                                LocalDateTime now, Duration holdTtl) {
         if (userId == null || userId <= 0) throw new DomainException("User id must be positive");
         if (showtimeId == null || showtimeId <= 0) throw new DomainException("Showtime id must be positive");
+        if (ticket == null) throw new DomainException("Ticket details are required");
         if (selections == null || selections.isEmpty()) throw new DomainException("At least one seat is required");
         if (selections.size() > maxSeats) throw new DomainException("A booking can hold at most " + maxSeats + " seats");
         if (holdTtl == null || holdTtl.isNegative() || holdTtl.isZero()) throw new DomainException("Hold TTL must be positive");
@@ -76,16 +81,20 @@ public final class Booking {
         var seats = selections.stream().map(selection -> BookingSeat.hold(showtimeId, selection, now)).toList();
         BigDecimal total = selections.stream().map(SeatSelection::price)
             .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
-        return new Booking(null, userId, showtimeId, BookingCode.generate(now), now, total,
+        return new Booking(null, userId, showtimeId, BookingCode.generate(now), ticket, now, total,
             BookingStatus.PENDING_PAYMENT, now.plus(holdTtl), null, now, now, seats, List.of());
     }
 
-    /** Rebuilds a stored booking; performs no business validation because old bookings must always load. */
+    /**
+     * Rebuilds a stored booking; performs no business validation because old bookings must always load.
+     *
+     * @param ticket null for bookings made before ticket details were stored
+     */
     public static Booking restore(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode,
-                                  LocalDateTime bookingTime, BigDecimal totalAmount, BookingStatus status,
+                                  TicketDetails ticket, LocalDateTime bookingTime, BigDecimal totalAmount, BookingStatus status,
                                   LocalDateTime expiredAt, Integer version, LocalDateTime createdAt,
                                   LocalDateTime updatedAt, List<BookingSeat> seats, List<BookingCombo> combos) {
-        return new Booking(id, userId, showtimeId, bookingCode, bookingTime, totalAmount, status, expiredAt, version,
+        return new Booking(id, userId, showtimeId, bookingCode, ticket, bookingTime, totalAmount, status, expiredAt, version,
             createdAt, updatedAt, seats, combos);
     }
 
@@ -164,6 +173,7 @@ public final class Booking {
     public Integer userId() { return userId; }
     public Long showtimeId() { return showtimeId; }
     public BookingCode bookingCode() { return bookingCode; }
+    public TicketDetails ticket() { return ticket; }
     public LocalDateTime bookingTime() { return bookingTime; }
     public BigDecimal totalAmount() { return totalAmount; }
     public BookingStatus status() { return status; }

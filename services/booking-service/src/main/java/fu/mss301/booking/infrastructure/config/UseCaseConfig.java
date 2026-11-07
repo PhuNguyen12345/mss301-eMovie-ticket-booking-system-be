@@ -16,7 +16,9 @@ import fu.mss301.booking.application.payment.RefundAdminUseCase;
 import fu.mss301.booking.application.policy.BookingEventPolicy;
 import fu.mss301.booking.application.policy.PaymentEventPolicy;
 import fu.mss301.booking.application.port.BookingQueries;
+import fu.mss301.booking.application.port.CinemaCatalog;
 import fu.mss301.booking.application.port.DomainEvents;
+import fu.mss301.booking.application.port.MovieCatalog;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.SeatLayoutProvider;
 import fu.mss301.booking.application.port.ShowtimeCatalog;
@@ -33,10 +35,10 @@ import java.time.Clock;
 @Configuration
 public class UseCaseConfig {
     @Bean
-    HoldSeatsUseCase holdSeatsUseCase(ShowtimeCatalog showtimes, SeatLayoutProvider seatLayout,
-                                      BookingRepository bookings, HoldPolicy policy, Transactions transactions,
-                                      Clock clock) {
-        return new HoldSeatsUseCase(showtimes, seatLayout, bookings, policy, transactions, clock);
+    HoldSeatsUseCase holdSeatsUseCase(ShowtimeCatalog showtimes, SeatLayoutProvider seatLayout, MovieCatalog movies,
+                                      CinemaCatalog cinemas, BookingRepository bookings, HoldPolicy policy,
+                                      Transactions transactions, Clock clock) {
+        return new HoldSeatsUseCase(showtimes, seatLayout, movies, cinemas, bookings, policy, transactions, clock);
     }
 
     @Bean
