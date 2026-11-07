@@ -56,7 +56,8 @@ export function useHoldSeats(showtimeId: number) {
     mutationFn: (ids: number[]) => booking.hold(showtimeId, ids),
     onMutate: () => session.getSnapshot(),
     onSuccess: async (result, _ids, owner) => {
-      if (!owner || session.getSnapshot()?.token !== owner.token) return;
+      if (!owner || session.getSnapshot()?.sessionId !== owner.sessionId)
+        return;
       cache.setQueryData(
         bookingKeys.detail(owner.user.userId, result.id),
         result,
@@ -82,7 +83,7 @@ export function useBookingActions(id: number) {
     if (!owner) return;
     const key = bookingKeys.detail(owner.user.userId, id);
     await cache.cancelQueries({ queryKey: key });
-    if (session.getSnapshot()?.token !== owner.token) return;
+    if (session.getSnapshot()?.sessionId !== owner.sessionId) return;
     cache.setQueryData(key, result);
     await Promise.all([
       cache.invalidateQueries({

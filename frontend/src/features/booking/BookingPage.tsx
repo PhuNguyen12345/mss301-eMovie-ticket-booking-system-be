@@ -130,10 +130,10 @@ function BookingContent({
   const busy = actions.pending;
   async function pay() {
     setError(null);
-    const token = session.getSnapshot()?.token;
+    const sessionId = session.getSnapshot()?.sessionId;
     try {
       const payment = await actions.pay.mutateAsync();
-      if (!token || session.getSnapshot()?.token !== token) return;
+      if (!sessionId || session.getSnapshot()?.sessionId !== sessionId) return;
       window.location.assign(paymentUrl(payment.checkoutUrl));
     } catch (error) {
       setError(error);

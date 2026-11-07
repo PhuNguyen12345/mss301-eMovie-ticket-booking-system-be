@@ -11,7 +11,11 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createHttpClient, shouldRetryQuery } from "../lib/http";
+import {
+  createHttpClient,
+  shouldRetryQuery,
+  type HttpClient,
+} from "../lib/http";
 import { createSessionStore } from "../features/auth/session";
 import { createDemoShowtimes } from "../features/showtimes/api/demo-showtimes";
 import { createHttpShowtimes } from "../features/showtimes/api/http-showtimes";
@@ -22,9 +26,9 @@ import { createComboApi } from "../features/combos/api";
 
 function createServices() {
   const session = createSessionStore();
-  const client = createHttpClient({
+  const client: HttpClient = createHttpClient({
     baseUrl: import.meta.env.VITE_API_BASE_URL || "/api",
-    accessToken: () => session.getSnapshot()?.token,
+    accessToken: () => session.accessToken(client),
     onUnauthorized: (token) => {
       if (session.getSnapshot()?.token === token) session.clear();
     },
@@ -67,9 +71,15 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
     services.session.getSnapshot,
   );
   useEffect(() => {
-    let userId = services.session.getSnapshot()?.user.userId;
+    const identity = () => {
+      const session = services.session.getSnapshot();
+      return session
+        ? `${session.sessionId}:${[...session.user.roles].sort().join(",")}`
+        : undefined;
+    };
+    let userId = identity();
     return services.session.subscribe(() => {
-      const nextId = services.session.getSnapshot()?.user.userId;
+      const nextId = identity();
       if (nextId !== userId) {
         void queryClient.cancelQueries({ queryKey: ["private"] });
         queryClient.removeQueries({ queryKey: ["private"] });
@@ -79,11 +89,25 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
   }, [services, queryClient]);
   useEffect(() => {
     if (!current) return;
+    const maintain = () => {
+      void services.session.accessToken(services.client).catch(() => {
+        /* Session store clears failed refreshes. */
+      });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") maintain();
+    };
     const timer = setTimeout(
-      services.session.clear,
-      Math.max(0, Math.min(current.expiresAt - Date.now(), 2147483647)),
+      maintain,
+      Math.max(0, Math.min(current.refreshAt - Date.now(), 2147483647)),
     );
-    return () => clearTimeout(timer);
+    window.addEventListener("focus", maintain);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", maintain);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [current, services]);
   return (
     <ServicesContext.Provider value={services}>

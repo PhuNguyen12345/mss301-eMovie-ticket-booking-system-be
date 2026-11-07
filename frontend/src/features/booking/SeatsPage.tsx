@@ -78,10 +78,10 @@ function SeatSelection({ id }: { id: number }) {
     }
     if (!bookable || !available.length || staleSelection || map.isError) return;
     setError(null);
-    const token = session.current.token;
+    const sessionId = session.current.sessionId;
     try {
       const booking = await hold.mutateAsync(available.map((s) => s.seatId));
-      if (sessionStore.getSnapshot()?.token !== token) return;
+      if (sessionStore.getSnapshot()?.sessionId !== sessionId) return;
       setCompleted(booking.id);
     } catch (error) {
       setError(error);
