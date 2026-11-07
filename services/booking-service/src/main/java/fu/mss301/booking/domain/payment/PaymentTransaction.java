@@ -123,7 +123,7 @@ public final class PaymentTransaction {
         return true;
     }
 
-    /** Refunds are paid out manually (PayOS has no refund API); an admin confirms it here. */
+    /** Staff transfer the money back manually, then an admin confirms it here. */
     public void completeRefund(Integer refundId, LocalDateTime now) {
         Refund refund = refunds.stream().filter(r -> refundId.equals(r.id())).findFirst()
             .orElseThrow(() -> new DomainException("Refund " + refundId + " does not belong to this payment"));
