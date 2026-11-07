@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
-import fu.mss301.user.application.event.RegistrationOtpRequested;
+import fu.mss301.user.domain.event.RegistrationOtpRequested;
 
 import fu.mss301.user.domain.model.OtpDeliveryStatus;
 import fu.mss301.user.infrastructure.persistence.repository.PendingRegistrationRepository;

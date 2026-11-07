@@ -1,8 +1,8 @@
 package fu.mss301.user.application.port.in;
 
-import fu.mss301.user.application.dto.ForgotPasswordRequest;
-import fu.mss301.user.application.dto.PasswordChangeResponse;
-import fu.mss301.user.application.dto.ResetPasswordRequest;
+import fu.mss301.user.application.usecase.dto.ForgotPasswordRequest;
+import fu.mss301.user.application.usecase.dto.PasswordChangeResponse;
+import fu.mss301.user.application.usecase.dto.ResetPasswordRequest;
 
 public interface PasswordResetService {
     void requestOtp(ForgotPasswordRequest request);

@@ -3,6 +3,7 @@ package fu.mss301.user.infrastructure.persistence.repository;
 import fu.mss301.user.infrastructure.persistence.entity.User;
 import java.util.Optional;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -14,6 +15,33 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Integer> {
+    @Query("""
+            select u.id as userId, u.fullName as fullName, u.email as email, u.phone as phone,
+                   u.dateOfBirth as dateOfBirth, u.gender as gender,
+                   u.cityProvince as cityProvince, u.district as district,
+                   u.address as address, u.preferredCinemaId as preferredCinemaId,
+                   u.avatarUrl as avatarUrl, u.status as status,
+                   u.emailVerifiedAt as emailVerifiedAt
+            from User u where u.id = :id
+            """)
+    Optional<ProfileRow> findProfileById(@Param("id") Integer id);
+
+    interface ProfileRow {
+        Integer getUserId();
+        String getFullName();
+        String getEmail();
+        String getPhone();
+        LocalDate getDateOfBirth();
+        String getGender();
+        String getCityProvince();
+        String getDistrict();
+        String getAddress();
+        Integer getPreferredCinemaId();
+        String getAvatarUrl();
+        String getStatus();
+        LocalDateTime getEmailVerifiedAt();
+    }
+
     @Query("select u.id from User u where u.email = :email")
     Optional<Integer> findIdByEmail(@Param("email") String email);
 

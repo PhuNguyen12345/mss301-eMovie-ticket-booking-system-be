@@ -9,10 +9,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import fu.mss301.user.application.port.out.PasswordOtpStore;
-import fu.mss301.user.application.port.out.RefreshTokenStore;
-import fu.mss301.user.application.port.out.RegistrationStore;
-import fu.mss301.user.application.port.out.UserStore;
+import fu.mss301.user.domain.repository.PasswordOtpStore;
+import fu.mss301.user.domain.repository.RefreshTokenStore;
+import fu.mss301.user.domain.repository.RegistrationStore;
+import fu.mss301.user.domain.repository.UserStore;
 import fu.mss301.user.domain.model.PasswordOtpPurpose;
 import fu.mss301.user.domain.model.PasswordOtp;
 import fu.mss301.user.domain.model.RefreshCredential;

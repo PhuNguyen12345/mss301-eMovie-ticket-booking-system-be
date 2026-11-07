@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.persistence.adapter;
 
-import fu.mss301.user.application.port.out.RefreshTokenStore;
+import fu.mss301.user.domain.repository.RefreshTokenStore;
 import fu.mss301.user.domain.model.RefreshCredential;
 import fu.mss301.user.infrastructure.persistence.entity.RefreshToken;
 import fu.mss301.user.infrastructure.persistence.repository.RefreshTokenRepository;

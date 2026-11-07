@@ -1,6 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
-import fu.mss301.user.application.event.PasswordResetOtpRequested;
+import fu.mss301.user.domain.event.PasswordResetOtpRequested;
 
 import fu.mss301.user.domain.model.OtpDeliveryStatus;
 import fu.mss301.user.infrastructure.persistence.repository.PasswordResetOtpRepository;
