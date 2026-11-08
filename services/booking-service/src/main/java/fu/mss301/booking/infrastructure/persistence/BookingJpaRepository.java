@@ -44,6 +44,14 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, Jp
         """)
     List<Integer> findIdsMissingCatalogIds(@Param("afterId") Integer afterId, Pageable limit);
 
+    /** What payment history shows of a booking, for many bookings in one query. */
+    @Query("""
+        select new fu.mss301.booking.infrastructure.persistence.BookingReference(
+            b.id, b.bookingCode, b.userId)
+        from BookingEntity b where b.id in :ids
+        """)
+    List<BookingReference> findReferences(@Param("ids") Collection<Integer> ids);
+
     Page<BookingEntity> findByUserId(Integer userId, Pageable pageable);
 
     @Query("select b.id from BookingEntity b where b.status = :status and b.expiredAt <= :now order by b.expiredAt")

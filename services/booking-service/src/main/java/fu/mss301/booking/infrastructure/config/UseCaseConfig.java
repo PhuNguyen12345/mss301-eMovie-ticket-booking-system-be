@@ -43,6 +43,8 @@ import fu.mss301.booking.domain.payment.PaymentRepository;
 import fu.mss301.booking.application.booking.TicketBackfillService;
 import fu.mss301.booking.application.port.BookingStatistics;
 import fu.mss301.booking.application.statistics.StatisticsQuery;
+import fu.mss301.booking.application.payment.PaymentHistoryQuery;
+import fu.mss301.booking.application.port.PaymentQueries;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -63,6 +65,11 @@ public class UseCaseConfig {
                                                 MovieCatalog movies, CinemaCatalog cinemas,
                                                 Transactions transactions) {
         return new TicketBackfillService(bookings, showtimes, movies, cinemas, transactions);
+    }
+
+    @Bean
+    PaymentHistoryQuery paymentHistoryQuery(PaymentQueries queries, Transactions transactions) {
+        return new PaymentHistoryQuery(queries, transactions);
     }
 
     @Bean

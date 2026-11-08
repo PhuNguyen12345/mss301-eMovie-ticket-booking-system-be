@@ -253,7 +253,7 @@ class BookingStatisticsIntegrationTests {
         jdbc.update("""
             INSERT INTO payment_transactions (booking_id, payment_method, provider, order_code, amount, status,
                 created_at, updated_at)
-            VALUES (?, 'PAYOS', 'PAYOS', ?, ?, ?, NOW(6), NOW(6))
+            VALUES (?, 'BANK_TRANSFER', 'PAYOS', ?, ?, ?, NOW(6), NOW(6))
             """, booking, IDS.incrementAndGet(), new BigDecimal(amount), status);
     }
 

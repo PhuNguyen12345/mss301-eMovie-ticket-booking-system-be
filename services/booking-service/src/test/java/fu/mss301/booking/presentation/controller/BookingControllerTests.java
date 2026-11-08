@@ -1,5 +1,13 @@
 package fu.mss301.booking.presentation.controller;
 
+import fu.mss301.booking.application.booking.BookingPage;
+import fu.mss301.booking.application.payment.PaymentHistoryQuery;
+import fu.mss301.booking.application.payment.PaymentHistoryView;
+import fu.mss301.booking.application.payment.PaymentSearch;
+import fu.mss301.booking.application.port.PaymentQueries;
+import fu.mss301.booking.domain.payment.PaymentStatus;
+import fu.mss301.booking.domain.payment.RefundMethod;
+import fu.mss301.booking.domain.payment.RefundStatus;
 import fu.mss301.booking.application.port.BookingStatistics;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.statistics.StatisticsFigures;
@@ -54,6 +62,7 @@ class BookingControllerTests {
     private TicketQrUseCase ticketQr;
     private ShowtimeCancellationUseCase showtimeCancellation;
     private BookingStatistics statistics;
+    private PaymentQueries paymentQueries;
     private MockMvc mvc;
 
     @BeforeEach
@@ -69,6 +78,9 @@ class BookingControllerTests {
         ticketQr = mock(TicketQrUseCase.class);
         showtimeCancellation = mock(ShowtimeCancellationUseCase.class);
         statistics = mock(BookingStatistics.class);
+        paymentQueries = mock(PaymentQueries.class);
+        when(paymentQueries.search(any(), anyInt(), anyInt()))
+            .thenAnswer(call -> new BookingPage<>(List.of(), call.getArgument(1), call.getArgument(2), 0, 0, true, true));
         Transactions inline = new Transactions() {
             public <T> T read(Supplier<T> work) { return work.get(); }
             public <T> T write(Supplier<T> work) { return work.get(); }
@@ -77,10 +89,64 @@ class BookingControllerTests {
                 new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
                     mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers, checkIn, ticketQr,
                     showtimeCancellation, new StatisticsQuery(statistics, inline)),
-                new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
+                new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds,
+                    new PaymentHistoryQuery(paymentQueries, inline)))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
             .build();
+    }
+
+    @Test
+    void paymentHistoryPassesEveryFilterAndTurnsDaysIntoARange() throws Exception {
+        var refund = new PaymentHistoryView.RefundLine(9, new BigDecimal("170000"), RefundMethod.VOUCHER, 88,
+            RefundStatus.COMPLETED, "Showtime cancelled", LocalDateTime.of(2026, 11, 8, 10, 0),
+            LocalDateTime.of(2026, 11, 8, 10, 0));
+        var row = new PaymentHistoryView(51, 120, "BK261108100000ABCDEF", 7, 1762000L, "PAYOS",
+            new BigDecimal("386000"), PaymentStatus.REFUNDED, "FT25", LocalDateTime.of(2026, 11, 8, 9, 0),
+            LocalDateTime.of(2026, 11, 8, 8, 59), List.of(refund));
+        var search = new PaymentSearch(PaymentStatus.REFUNDED, 120, 1762000L, LocalDateTime.of(2026, 11, 1, 0, 0),
+            LocalDateTime.of(2026, 12, 1, 0, 0));
+        when(paymentQueries.search(search, 2, 5)).thenReturn(new BookingPage<>(List.of(row), 2, 5, 11, 3, false, true));
+        mvc.perform(get("/api/payments").param("status", "REFUNDED").param("bookingId", "120")
+                .param("orderCode", "1762000").param("from", "2026-11-01").param("to", "2026-11-30")
+                .param("page", "2").param("size", "5").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.data[0].bookingCode").value("BK261108100000ABCDEF"))
+            .andExpect(jsonPath("$.data.data[0].status").value("REFUNDED"))
+            .andExpect(jsonPath("$.data.data[0].refunds[0].voucherId").value(88))
+            .andExpect(jsonPath("$.data.data[0].checkoutUrl").doesNotExist())
+            .andExpect(jsonPath("$.data.totalElements").value(11));
+        mvc.perform(get("/api/payments").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk());
+        verify(paymentQueries).search(new PaymentSearch(null, null, null, null, null), 0, 20);
+    }
+
+    @Test
+    void onlyAdminsSeePaymentHistory() throws Exception {
+        mvc.perform(get("/api/payments").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(paymentQueries);
+    }
+
+    @Test
+    void invalidPaymentHistoryParametersAre400() throws Exception {
+        for (var params : List.of(
+                Map.of("from", "2026-11-30", "to", "2026-11-01"),
+                Map.of("size", "0"),
+                Map.of("size", "101"),
+                Map.of("page", "-1"),
+                Map.of("status", "PAID"),
+                Map.of("from", "01-11-2026"))) {
+            var request = get("/api/payments").header("X-User-Id", "1").header("X-User-Roles", "ADMIN");
+            params.forEach((name, value) -> request.param(name, value));
+            mvc.perform(request).andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/payments").param("size", "100").param("from", "2026-11-01").param("to", "2026-11-01")
+                .header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk());
+        verify(paymentQueries).search(new PaymentSearch(null, null, null, LocalDateTime.of(2026, 11, 1, 0, 0),
+            LocalDateTime.of(2026, 11, 2, 0, 0)), 0, 100);
+        verifyNoMoreInteractions(paymentQueries);
     }
 
     @Test
