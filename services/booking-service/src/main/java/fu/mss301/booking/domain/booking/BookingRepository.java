@@ -25,4 +25,7 @@ public interface BookingRepository {
 
     /** Paid bookings whose showtime was cancelled and whose customer is not compensated yet, oldest first. */
     List<Integer> findUncompensatedIds(int limit);
+
+    /** Bookings whose ticket lacks the movie and cinema ids, with an id above {@code afterId}, lowest first. */
+    List<Integer> findIdsMissingCatalogIds(Integer afterId, int limit);
 }

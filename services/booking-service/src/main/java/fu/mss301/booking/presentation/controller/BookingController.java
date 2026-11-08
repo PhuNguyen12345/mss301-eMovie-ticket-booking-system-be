@@ -10,6 +10,9 @@ import fu.mss301.booking.application.booking.CheckInUseCase;
 import fu.mss301.booking.application.booking.CheckInView;
 import fu.mss301.booking.application.booking.ShowtimeCancellationUseCase;
 import fu.mss301.booking.application.booking.ShowtimeCancellationView;
+import fu.mss301.booking.application.statistics.StatisticsGroup;
+import fu.mss301.booking.application.statistics.StatisticsQuery;
+import fu.mss301.booking.application.statistics.StatisticsView;
 import fu.mss301.booking.application.booking.TicketQrUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
@@ -36,6 +39,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @RestController
@@ -51,12 +55,13 @@ public class BookingController {
     private final CheckInUseCase checkIn;
     private final TicketQrUseCase ticketQr;
     private final ShowtimeCancellationUseCase showtimeCancellation;
+    private final StatisticsQuery statistics;
 
     public BookingController(SeatMapQuery seatMap, HoldSeatsUseCase holdSeats, BookingQueryService queries,
                              CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment,
                              ReplaceBookingCombosUseCase replaceCombos, ApplyVoucherUseCase vouchers,
                              CheckInUseCase checkIn, TicketQrUseCase ticketQr,
-                             ShowtimeCancellationUseCase showtimeCancellation) {
+                             ShowtimeCancellationUseCase showtimeCancellation, StatisticsQuery statistics) {
         this.seatMap = seatMap;
         this.holdSeats = holdSeats;
         this.queries = queries;
@@ -67,6 +72,7 @@ public class BookingController {
         this.checkIn = checkIn;
         this.ticketQr = ticketQr;
         this.showtimeCancellation = showtimeCancellation;
+        this.statistics = statistics;
     }
 
     @GetMapping
@@ -83,6 +89,24 @@ public class BookingController {
         if (!user.isAdmin()) throw new ApiException(HttpStatus.FORBIDDEN, "Access denied");
         var search = new BookingSearch(status, showtimeId, userId, code, from, to);
         return ApiResponse.success(toResponse(queries.search(search, page, size)), "Bookings retrieved successfully");
+    }
+
+    /** Sales by showtime date, movie or cinema; only confirmed bookings count. */
+    @GetMapping("/statistics")
+    public ApiResponse<StatisticsView> statistics(
+            @CurrentUser AuthenticatedUser user,
+            @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "groupBy", defaultValue = "day") String groupBy) {
+        if (!user.isAdmin()) throw new ApiException(HttpStatus.FORBIDDEN, "Access denied");
+        return ApiResponse.success(statistics.summarize(from, to, groupOf(groupBy)), "Statistics retrieved successfully");
+    }
+
+    private static StatisticsGroup groupOf(String value) {
+        for (StatisticsGroup group : StatisticsGroup.values()) {
+            if (group.name().equalsIgnoreCase(value.trim())) return group;
+        }
+        throw new IllegalArgumentException("groupBy must be day, month, movie or cinema");
     }
 
     @GetMapping("/showtimes/{showtimeId}/seats")

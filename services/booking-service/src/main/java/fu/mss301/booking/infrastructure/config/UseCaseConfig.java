@@ -40,6 +40,9 @@ import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.combo.ComboRepository;
 import fu.mss301.booking.domain.payment.PaymentRepository;
+import fu.mss301.booking.application.booking.TicketBackfillService;
+import fu.mss301.booking.application.port.BookingStatistics;
+import fu.mss301.booking.application.statistics.StatisticsQuery;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -53,6 +56,18 @@ public class UseCaseConfig {
                                       CinemaCatalog cinemas, BookingRepository bookings, HoldPolicy policy,
                                       Transactions transactions, Clock clock) {
         return new HoldSeatsUseCase(showtimes, seatLayout, movies, cinemas, bookings, policy, transactions, clock);
+    }
+
+    @Bean
+    TicketBackfillService ticketBackfillService(BookingRepository bookings, ShowtimeCatalog showtimes,
+                                                MovieCatalog movies, CinemaCatalog cinemas,
+                                                Transactions transactions) {
+        return new TicketBackfillService(bookings, showtimes, movies, cinemas, transactions);
+    }
+
+    @Bean
+    StatisticsQuery statisticsQuery(BookingStatistics statistics, Transactions transactions) {
+        return new StatisticsQuery(statistics, transactions);
     }
 
     @Bean

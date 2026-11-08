@@ -2,6 +2,7 @@ package fu.mss301.booking.infrastructure.scheduling;
 
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.ShowtimeCompensationService;
+import fu.mss301.booking.application.booking.TicketBackfillService;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
 import fu.mss301.booking.application.voucher.VoucherReservations;
 import fu.mss301.booking.infrastructure.config.BookingProperties;
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Releases expired seat holds, re-drives payments whose booking update was missed and settles vouchers a booking
- * has held for too long, and finishes compensating customers of cancelled showtimes.
+ * has held for too long, and finishes compensating customers of cancelled showtimes. A slower job fills in the
+ * tickets of old bookings, which calls other services.
  */
 @Component
 @ConditionalOnProperty(name = "booking.scheduling.enabled", havingValue = "true", matchIfMissing = true)
@@ -23,15 +25,17 @@ class BookingMaintenanceScheduler {
     private final ReconcilePaymentUseCase reconcile;
     private final VoucherReservations vouchers;
     private final ShowtimeCompensationService compensation;
+    private final TicketBackfillService ticketBackfill;
     private final BookingProperties properties;
 
     BookingMaintenanceScheduler(ExpireOverdueBookingsUseCase expireOverdue, ReconcilePaymentUseCase reconcile,
                                 VoucherReservations vouchers, ShowtimeCompensationService compensation,
-                                BookingProperties properties) {
+                                TicketBackfillService ticketBackfill, BookingProperties properties) {
         this.expireOverdue = expireOverdue;
         this.reconcile = reconcile;
         this.vouchers = vouchers;
         this.compensation = compensation;
+        this.ticketBackfill = ticketBackfill;
         this.properties = properties;
     }
 
@@ -45,6 +49,16 @@ class BookingMaintenanceScheduler {
             compensation.compensatePending(properties.expiryBatchSize());
         } catch (RuntimeException exception) {
             log.error("Booking maintenance run failed", exception);
+        }
+    }
+
+    /** Starts after a minute, once service discovery knows showtime-service; a run with nothing left is one query. */
+    @Scheduled(fixedDelayString = "${booking.ticket-backfill-interval:PT5M}", initialDelayString = "PT1M")
+    void fillInTickets() {
+        try {
+            ticketBackfill.fillMissing(properties.expiryBatchSize());
+        } catch (RuntimeException exception) {
+            log.error("Ticket backfill run failed", exception);
         }
     }
 }

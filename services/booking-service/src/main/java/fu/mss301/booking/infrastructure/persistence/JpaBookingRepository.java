@@ -74,6 +74,11 @@ class JpaBookingRepository implements BookingRepository {
     }
 
     @Override
+    public List<Integer> findIdsMissingCatalogIds(Integer afterId, int limit) {
+        return jpa.findIdsMissingCatalogIds(afterId, PageRequest.of(0, limit));
+    }
+
+    @Override
     public List<Integer> findUncompensatedIds(int limit) {
         return jpa.findIdsByStatusNotCompensated(BookingStatus.SHOWTIME_CANCELLED, PageRequest.of(0, limit));
     }

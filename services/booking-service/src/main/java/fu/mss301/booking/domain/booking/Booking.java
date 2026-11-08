@@ -38,7 +38,7 @@ public final class Booking {
     private final Integer userId;
     private final Long showtimeId;
     private final BookingCode bookingCode;
-    private final TicketDetails ticket;
+    private TicketDetails ticket;
     private final LocalDateTime bookingTime;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
@@ -121,6 +121,20 @@ public final class Booking {
         return new Booking(id, userId, showtimeId, bookingCode, ticket, bookingTime, totalAmount, discountAmount, status,
             expiredAt, version, createdAt, updatedAt, seats, combos, vouchers, checkIns, showtimeCancelledAt,
             compensatedAt);
+    }
+
+    /**
+     * Fills in what an old booking's ticket is missing: the whole ticket when it has none, otherwise only the movie
+     * and cinema ids. Values a ticket already shows are never replaced, because a sold ticket is a fixed copy.
+     *
+     * @param current the ticket as the catalog describes it now, with the movie and cinema ids
+     * @return whether anything changed
+     */
+    public boolean completeTicket(TicketDetails current) {
+        if (current == null || !current.hasCatalogIds()) throw new DomainException("Ticket with catalog ids is required");
+        if (ticket != null && ticket.hasCatalogIds()) return false;
+        ticket = ticket == null ? current : ticket.withCatalogIdsOf(current);
+        return true;
     }
 
     /** Payment succeeded: the held seats become booked. Allowed until the hold is actually released. */

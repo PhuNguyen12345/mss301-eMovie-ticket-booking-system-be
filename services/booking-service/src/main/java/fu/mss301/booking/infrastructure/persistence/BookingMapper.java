@@ -45,7 +45,8 @@ final class BookingMapper {
     private static TicketDetails ticket(BookingEntity entity) {
         if (entity.getMovieTitle() == null) return null;
         return new TicketDetails(entity.getMovieTitle(), entity.getMoviePosterUrl(), entity.getCinemaName(),
-            entity.getScreenName(), entity.getStartTime(), entity.getEndTime());
+            entity.getScreenName(), entity.getStartTime(), entity.getEndTime(), entity.getMovieId(),
+            entity.getCinemaId());
     }
 
     static BookingEntity newEntity(Booking source) {
@@ -53,13 +54,6 @@ final class BookingMapper {
         entity.setUserId(source.userId());
         entity.setShowtimeId(source.showtimeId());
         entity.setBookingCode(source.bookingCode().value());
-        var ticket = source.ticket();
-        entity.setMovieTitle(ticket.movieTitle());
-        entity.setMoviePosterUrl(ticket.moviePosterUrl());
-        entity.setCinemaName(ticket.cinemaName());
-        entity.setScreenName(ticket.screenName());
-        entity.setStartTime(ticket.startTime());
-        entity.setEndTime(ticket.endTime());
         entity.setBookingTime(source.bookingTime());
         entity.setExpiredAt(source.expiredAt());
         entity.setCreatedAt(source.createdAt());
@@ -75,6 +69,7 @@ final class BookingMapper {
      * their id too, but a combo or voucher removed from the booking loses its row.
      */
     static void update(Booking source, BookingEntity target, IntFunction<ComboEntity> comboReference) {
+        copyTicket(source.ticket(), target);
         target.setTotalAmount(source.totalAmount());
         target.setDiscountAmount(source.discountAmount());
         target.setStatus(source.status());
@@ -95,6 +90,19 @@ final class BookingMapper {
         updateCombos(source, target, comboReference);
         updateVouchers(source, target);
         addCheckIns(source, target);
+    }
+
+    /** Bookings made before ticket details were stored keep empty columns until the ticket is filled in. */
+    private static void copyTicket(TicketDetails ticket, BookingEntity target) {
+        if (ticket == null) return;
+        target.setMovieTitle(ticket.movieTitle());
+        target.setMoviePosterUrl(ticket.moviePosterUrl());
+        target.setCinemaName(ticket.cinemaName());
+        target.setScreenName(ticket.screenName());
+        target.setStartTime(ticket.startTime());
+        target.setEndTime(ticket.endTime());
+        target.setMovieId(ticket.movieId());
+        target.setCinemaId(ticket.cinemaId());
     }
 
     /** Check-ins are history: new ones are added and stored ones never change. */
