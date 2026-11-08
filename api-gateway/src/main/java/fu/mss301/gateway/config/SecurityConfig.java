@@ -69,6 +69,8 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.POST, "/api/bookings/showtimes/*/cancellation").hasRole("ADMIN")
                 // Revenue and tickets sold are for admins.
                 .pathMatchers(HttpMethod.GET, "/api/bookings/statistics").hasRole("ADMIN")
+                // The history of every payment is for admins; customers only sync their own booking below this path.
+                .pathMatchers(HttpMethod.GET, "/api/payments").hasRole("ADMIN")
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
                 .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
                 .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")

@@ -79,6 +79,17 @@ class CheckInAuthorizationTests {
     }
 
     @Test
+    void onlyAdminsSeeThePaymentHistory() {
+        client.get().uri("/api/payments?status=REFUNDED").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/api/payments?status=REFUNDED").headers(h -> h.setBearerAuth("CUSTOMER"))
+            .exchange().expectStatus().isForbidden();
+        client.get().uri("/api/payments?status=REFUNDED").headers(h -> h.setBearerAuth("ADMIN"))
+            .exchange().expectStatus().isOk();
+        client.post().uri("/api/payments/bookings/7/sync").headers(h -> h.setBearerAuth("CUSTOMER"))
+            .exchange().expectStatus().isOk();
+    }
+
+    @Test
     void theInternalPathIsNotReachableThroughTheGateway() {
         client.post().uri("/internal/showtimes/15/cancellation").headers(h -> h.setBearerAuth("ADMIN"))
             .exchange().expectStatus().isForbidden();
@@ -113,6 +124,11 @@ class CheckInAuthorizationTests {
             return Mono.just("ok");
         }
 
+        @GetMapping("/api/payments")
+        Mono<String> payments() {
+            return Mono.just("ok");
+        }
+
         @GetMapping("/api/bookings/statistics")
         Mono<String> statistics() {
             return Mono.just("ok");
@@ -123,7 +139,7 @@ class CheckInAuthorizationTests {
             return Mono.just("ok");
         }
 
-        @PostMapping({"/api/bookings/check-in", "/api/bookings/{id}/cancel", "/api/bookings/showtimes/{id}/cancellation",
+        @PostMapping({"/api/payments/bookings/{id}/sync", "/api/bookings/check-in", "/api/bookings/{id}/cancel", "/api/bookings/showtimes/{id}/cancellation",
             "/internal/showtimes/{id}/cancellation"})
         Mono<String> write() {
             return Mono.just("ok");
