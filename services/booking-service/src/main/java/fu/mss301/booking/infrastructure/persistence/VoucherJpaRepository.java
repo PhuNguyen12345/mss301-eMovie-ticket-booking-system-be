@@ -27,6 +27,10 @@ interface VoucherJpaRepository extends JpaRepository<VoucherEntity, Integer> {
     @Query(value = "select v from VoucherEntity v", countQuery = "select count(v) from VoucherEntity v")
     Page<VoucherEntity> findPage(Pageable pageable);
 
+    Optional<VoucherEntity> findBySourcePaymentId(Integer sourcePaymentId);
+
+    Optional<VoucherEntity> findBySourceBookingId(Integer sourceBookingId);
+
     @Query("select v from VoucherEntity v join fetch v.claim c where c.userId = :userId order by v.id desc")
     List<VoucherEntity> findOwnedBy(@Param("userId") Integer userId);
 

@@ -43,7 +43,7 @@ class VoucherControllerTests {
     private static final LocalDate END = LocalDate.of(2027, 1, 31);
     private static final BigDecimal VALUE = new BigDecimal("20000.00");
     private static final VoucherView VIEW = new VoucherView(5, "TET-2027", VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED,
-        VALUE, START, END, null, null, null, VoucherStatus.ACTIVE, null, null);
+        VALUE, START, END, null, null, null, VoucherStatus.ACTIVE, null, null, null, null);
     private static final MyVoucherView MINE = new MyVoucherView(5, "TET-2027", VoucherKind.TICKET_DISCOUNT,
         DiscountType.FIXED, VALUE, START, END, null, null, null, VoucherAvailability.AVAILABLE);
 

@@ -15,7 +15,7 @@ final class PaymentMapper {
             entity.getCheckoutUrl(), entity.getAmount(), entity.getStatus(), entity.getPaidAt(), entity.getVersion(),
             entity.getCreatedAt(), entity.getUpdatedAt(), entity.getRefunds().stream()
                 .map(refund -> Refund.restore(refund.getId(), refund.getAmount(), refund.getReason(),
-                    refund.getStatus(), refund.getRefundedAt(), refund.getCreatedAt(), refund.getUpdatedAt()))
+                    refund.getMethod(), refund.getVoucherId(), refund.getStatus(), refund.getRefundedAt(), refund.getCreatedAt(), refund.getUpdatedAt()))
                 .toList());
     }
 
@@ -57,6 +57,8 @@ final class PaymentMapper {
         row.setPayment(payment);
         row.setAmount(refund.amount());
         row.setReason(refund.reason());
+        row.setMethod(refund.method());
+        row.setVoucherId(refund.voucherId());
         row.setStatus(refund.status());
         row.setRefundedAt(refund.refundedAt());
         row.setCreatedAt(refund.createdAt());

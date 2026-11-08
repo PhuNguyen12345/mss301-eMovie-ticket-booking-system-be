@@ -15,7 +15,8 @@ import java.util.List;
  * Aggregate root for one payment attempt of a booking through a payment provider (PayOS).
  * <p>
  * State machine: {@code PENDING -> SUCCESS | FAILED}, {@code FAILED -> SUCCESS} (money arrived after the
- * link was closed) and {@code SUCCESS -> REFUNDED}. It references its booking by id only: the booking is a
+ * link was closed) and {@code SUCCESS -> REFUNDED} (given back as a voucher, or by an older manual refund).
+ * It references its booking by id only: the booking is a
  * different aggregate and is updated through the {@link PaymentSucceeded} event.
  */
 public final class PaymentTransaction {
@@ -112,18 +113,28 @@ public final class PaymentTransaction {
         return true;
     }
 
-    /** Money was received for a booking that can no longer be confirmed. Idempotent per payment. */
-    public boolean requestRefund(String reason, LocalDateTime now) {
-        if (status != PaymentStatus.SUCCESS) {
-            throw new InvalidStateTransitionException("Only a successful payment can be refunded");
-        }
+    /**
+     * Money was received for a booking that can no longer be confirmed, and is given back as a value voucher.
+     * Idempotent per payment; a payment that already has a refund keeps it.
+     *
+     * @return true when the payment changed
+     */
+    public boolean compensateWithVoucher(Integer voucherId, String reason, LocalDateTime now) {
+        if (voucherId == null) throw new DomainException("Voucher id is required");
         if (refunds.stream().anyMatch(Refund::isOpenOrDone)) return false;
-        refunds.add(Refund.request(amount, reason, now));
+        if (status != PaymentStatus.SUCCESS) {
+            throw new InvalidStateTransitionException("Only a successful payment can be given back");
+        }
+        refunds.add(Refund.byVoucher(amount, reason, voucherId, now));
+        this.status = PaymentStatus.REFUNDED;
         this.updatedAt = now;
         return true;
     }
 
-    /** Staff transfer the money back manually, then an admin confirms it here. */
+    /**
+     * Staff transfer the money back manually, then an admin confirms it here. Only refunds recorded before
+     * late payments became vouchers are still pending.
+     */
     public void completeRefund(Integer refundId, LocalDateTime now) {
         Refund refund = refunds.stream().filter(r -> refundId.equals(r.id())).findFirst()
             .orElseThrow(() -> new DomainException("Refund " + refundId + " does not belong to this payment"));

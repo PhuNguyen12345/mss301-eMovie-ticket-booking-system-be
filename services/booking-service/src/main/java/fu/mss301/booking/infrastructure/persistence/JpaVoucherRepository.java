@@ -42,7 +42,8 @@ class JpaVoucherRepository implements VoucherRepository, VoucherQueries {
         try {
             return VoucherMapper.toDomain(jpa.saveAndFlush(entity));
         } catch (DataIntegrityViolationException exception) {
-            // uq_vouchers_code: a code that exists is only ever created twice, every other write holds a row lock.
+            // uq_vouchers_code, or uq_vouchers_source_* when two runs issue the same value voucher at once. Every
+            // other write holds a row lock.
             throw new VoucherCodeTakenException();
         }
     }
@@ -60,6 +61,16 @@ class JpaVoucherRepository implements VoucherRepository, VoucherQueries {
     @Override
     public Optional<Voucher> findByCodeForUpdate(String code) {
         return jpa.lockByCode(code).map(VoucherMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Voucher> findBySourcePaymentId(Integer paymentId) {
+        return jpa.findBySourcePaymentId(paymentId).map(VoucherMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Voucher> findBySourceBookingId(Integer bookingId) {
+        return jpa.findBySourceBookingId(bookingId).map(VoucherMapper::toDomain);
     }
 
     @Override

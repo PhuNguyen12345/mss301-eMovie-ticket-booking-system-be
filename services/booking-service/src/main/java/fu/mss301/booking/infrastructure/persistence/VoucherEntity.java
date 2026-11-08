@@ -51,6 +51,12 @@ public class VoucherEntity {
     @Column(name = "combo_id")
     private Integer comboId;
 
+    @Column(name = "source_payment_id", updatable = false)
+    private Integer sourcePaymentId;
+
+    @Column(name = "source_booking_id", updatable = false)
+    private Integer sourceBookingId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private VoucherStatus status;

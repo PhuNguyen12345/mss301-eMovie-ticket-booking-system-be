@@ -50,6 +50,7 @@ booking:
   max-seats: ${BOOKING_MAX_SEATS:8}
   expiry-scan-interval: ${BOOKING_EXPIRY_SCAN_INTERVAL:PT30S}
   expiry-batch-size: ${BOOKING_EXPIRY_BATCH_SIZE:100}
+  value-voucher-ttl: ${BOOKING_VALUE_VOUCHER_TTL:P90D}
   clients:
     showtime-url: ${SHOWTIME_SERVICE_URL:}
     movie-url: ${MOVIE_SERVICE_URL:}

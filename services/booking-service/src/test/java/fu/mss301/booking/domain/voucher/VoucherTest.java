@@ -191,6 +191,29 @@ class VoucherTest {
     }
 
     @Test
+    void theSystemIssuesValueVouchersStraightToTheirOwner() {
+        var voucher = Voucher.forPayment(VoucherCode.of("EMLATE01"), 7, new BigDecimal("90000"), 31, END, NOW);
+        assertEquals(VoucherKind.VALUE, voucher.terms().kind());
+        assertEquals(DiscountType.FIXED, voucher.terms().discountType());
+        assertEquals(new BigDecimal("90000.00"), voucher.terms().discountValue());
+        assertEquals(NOW.toLocalDate(), voucher.terms().startDate());
+        assertEquals(7, voucher.claim().userId());
+        assertEquals(ClaimStatus.AVAILABLE, voucher.claim().status());
+        assertEquals(31, voucher.sourcePaymentId());
+        assertNull(voucher.sourceBookingId());
+        assertDoesNotThrow(() -> voucher.reserveFor(7, 42, NOW));
+
+        var rest = Voucher.forRemainder(VoucherCode.of("EMREST01"), 7, new BigDecimal("150000"), 42, END, NOW);
+        assertEquals(42, rest.sourceBookingId());
+        assertNull(rest.sourcePaymentId());
+
+        assertThrows(DomainException.class, () -> Voucher.forPayment(VoucherCode.of("EMLATE02"), 7, new BigDecimal("1"), null, END, NOW));
+        assertThrows(DomainException.class, () -> Voucher.forRemainder(VoucherCode.of("EMREST02"), 7, new BigDecimal("1"), null, END, NOW));
+        assertThrows(DomainException.class, () -> Voucher.forPayment(VoucherCode.of("EMLATE03"), null, new BigDecimal("1"), 31, END, NOW));
+        assertThrows(DomainException.class, () -> Voucher.forPayment(VoucherCode.of("EMLATE04"), 7, new BigDecimal("0"), 31, END, NOW));
+    }
+
+    @Test
     void codesAreCaseInsensitiveAndGeneratedOnesAreValid() {
         assertEquals("TET-2027", VoucherCode.of("  tet-2027 ").value());
         assertThrows(DomainException.class, () -> VoucherCode.of("a b"));
