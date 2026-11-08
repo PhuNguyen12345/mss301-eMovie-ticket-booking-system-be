@@ -4,6 +4,8 @@ import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingCode;
 import fu.mss301.booking.domain.booking.BookingCombo;
 import fu.mss301.booking.domain.booking.BookingSeat;
+import fu.mss301.booking.domain.booking.BookingVoucher;
+import fu.mss301.booking.domain.booking.VoucherOffer;
 import fu.mss301.booking.domain.booking.TicketDetails;
 
 import java.util.Comparator;
@@ -18,14 +20,21 @@ final class BookingMapper {
     static Booking toDomain(BookingEntity entity) {
         return Booking.restore(entity.getId(), entity.getUserId(), entity.getShowtimeId(),
             new BookingCode(entity.getBookingCode()), ticket(entity), entity.getBookingTime(), entity.getTotalAmount(),
-            entity.getStatus(), entity.getExpiredAt(), entity.getVersion(), entity.getCreatedAt(),
+            entity.getDiscountAmount(), entity.getStatus(), entity.getExpiredAt(), entity.getVersion(), entity.getCreatedAt(),
             entity.getUpdatedAt(), entity.getSeats().stream().map(seat -> BookingSeat.restore(seat.getId(),
                 seat.getShowtimeId(), seat.getShowtimeSeatId(), seat.getSeatId(), seat.getPrice(), seat.getRowCode(),
-                seat.getSeatNumber(), seat.getSeatTypeName(), seat.getStatus(), seat.getCreatedAt(),
+                seat.getSeatNumber(), seat.getSeatTypeName(), seat.getSeatTypeId(), seat.getStatus(), seat.getCreatedAt(),
                 seat.getUpdatedAt())).toList(),
             entity.getCombos().stream().map(combo -> BookingCombo.restore(combo.getId(), combo.getCombo().getId(),
                     combo.getName(), combo.getQuantity(), combo.getPrice()))
-                .sorted(Comparator.comparing(BookingCombo::comboId)).toList());
+                .sorted(Comparator.comparing(BookingCombo::comboId)).toList(),
+            entity.getVouchers().stream().map(BookingMapper::voucherOf).toList());
+    }
+
+    private static BookingVoucher voucherOf(BookingVoucherEntity row) {
+        var offer = new VoucherOffer(row.getVoucherId(), row.getCode(), row.getKind(), row.getDiscountType(),
+            row.getDiscountValue(), row.getMinOrderAmount(), row.getSeatTypeId(), row.getComboId(), row.getExpiresOn());
+        return BookingVoucher.restore(row.getId(), offer, row.getSeatId(), row.getDiscountAmount(), row.getCreatedAt());
     }
 
     /** Bookings made before ticket details were stored have no copy. */
@@ -53,15 +62,17 @@ final class BookingMapper {
         update(source, entity, ignored -> {
             throw new IllegalStateException("A new booking has no combos");
         });
+        if (!source.vouchers().isEmpty()) throw new IllegalStateException("A new booking has no vouchers");
         return entity;
     }
 
     /**
-     * Copies only what can change. Seat rows keep their id and are never deleted. Combo rows keep their id
-     * too, but a combo removed from the booking loses its row.
+     * Copies only what can change. Seat rows keep their id and are never deleted. Combo and voucher rows keep
+     * their id too, but a combo or voucher removed from the booking loses its row.
      */
     static void update(Booking source, BookingEntity target, IntFunction<ComboEntity> comboReference) {
         target.setTotalAmount(source.totalAmount());
+        target.setDiscountAmount(source.discountAmount());
         target.setStatus(source.status());
         target.setUpdatedAt(source.updatedAt());
         var rows = target.getSeats().stream()
@@ -76,6 +87,36 @@ final class BookingMapper {
             }
         }
         updateCombos(source, target, comboReference);
+        updateVouchers(source, target);
+    }
+
+    private static void updateVouchers(Booking source, BookingEntity target) {
+        var kept = source.vouchers().stream().map(BookingVoucher::id).filter(Objects::nonNull).collect(Collectors.toSet());
+        target.getVouchers().removeIf(row -> !kept.contains(row.getId()));
+        var rows = target.getVouchers().stream()
+            .collect(Collectors.toMap(BookingVoucherEntity::getId, Function.identity()));
+        for (BookingVoucher voucher : source.vouchers()) {
+            var row = voucher.id() == null ? newVoucher(voucher, target) : rows.get(voucher.id());
+            row.setDiscountAmount(voucher.discountAmount());
+        }
+    }
+
+    private static BookingVoucherEntity newVoucher(BookingVoucher voucher, BookingEntity booking) {
+        var row = new BookingVoucherEntity();
+        row.setBooking(booking);
+        row.setVoucherId(voucher.voucherId());
+        row.setCode(voucher.code());
+        row.setKind(voucher.kind());
+        row.setDiscountType(voucher.discountType());
+        row.setDiscountValue(voucher.discountValue());
+        row.setMinOrderAmount(voucher.minOrderAmount());
+        row.setSeatTypeId(voucher.seatTypeId());
+        row.setComboId(voucher.comboId());
+        row.setSeatId(voucher.seatId());
+        row.setExpiresOn(voucher.expiresOn());
+        row.setCreatedAt(voucher.createdAt());
+        booking.getVouchers().add(row);
+        return row;
     }
 
     private static void updateCombos(Booking source, BookingEntity target, IntFunction<ComboEntity> comboReference) {
@@ -110,6 +151,7 @@ final class BookingMapper {
         row.setRowCode(seat.rowCode());
         row.setSeatNumber(seat.seatNumber());
         row.setSeatTypeName(seat.seatTypeName());
+        row.setSeatTypeId(seat.seatTypeId());
         row.setStatus(seat.status());
         row.setCreatedAt(seat.createdAt());
         row.setUpdatedAt(seat.updatedAt());

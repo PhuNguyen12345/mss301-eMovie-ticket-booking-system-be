@@ -8,6 +8,9 @@ import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.combo.ComboService;
+import fu.mss301.booking.application.booking.ApplyVoucherUseCase;
+import fu.mss301.booking.application.policy.VoucherEventPolicy;
+import fu.mss301.booking.application.voucher.VoucherReservations;
 import fu.mss301.booking.application.voucher.VoucherService;
 import fu.mss301.booking.application.port.VoucherQueries;
 import fu.mss301.booking.domain.voucher.VoucherRepository;
@@ -72,8 +75,9 @@ public class UseCaseConfig {
 
     @Bean
     InitiatePaymentUseCase initiatePaymentUseCase(BookingRepository bookings, PaymentRepository payments,
-                                                  PaymentGateway gateway, Transactions transactions, Clock clock) {
-        return new InitiatePaymentUseCase(bookings, payments, gateway, transactions, clock);
+                                                  PaymentGateway gateway, Transactions transactions, DomainEvents events,
+                                                  Clock clock) {
+        return new InitiatePaymentUseCase(bookings, payments, gateway, transactions, events, clock);
     }
 
     @Bean
@@ -108,8 +112,28 @@ public class UseCaseConfig {
     @Bean
     ReplaceBookingCombosUseCase replaceBookingCombosUseCase(BookingRepository bookings, PaymentRepository payments,
                                                             ComboRepository combos, Transactions transactions,
-                                                            Clock clock) {
-        return new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, clock);
+                                                            DomainEvents events, Clock clock) {
+        return new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, events, clock);
+    }
+
+    @Bean
+    VoucherReservations voucherReservations(VoucherRepository vouchers, BookingRepository bookings,
+                                            Transactions transactions, HoldPolicy policy, Clock clock) {
+        // A booking holds a voucher at most as long as it holds its seats.
+        return new VoucherReservations(vouchers, bookings, transactions, policy.holdTtl(), clock);
+    }
+
+    @Bean
+    ApplyVoucherUseCase applyVoucherUseCase(BookingRepository bookings, PaymentRepository payments,
+                                            VoucherRepository vouchers, VoucherReservations reservations,
+                                            Transactions transactions, DomainEvents events, Clock clock) {
+        return new ApplyVoucherUseCase(bookings, payments, vouchers, reservations, transactions, events, clock);
+    }
+
+    @Bean
+    VoucherEventPolicy voucherEventPolicy(BookingRepository bookings, VoucherReservations reservations,
+                                          Transactions transactions) {
+        return new VoucherEventPolicy(bookings, reservations, transactions);
     }
 
     @Bean

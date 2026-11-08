@@ -45,6 +45,9 @@ public class BookingSeatEntity {
     @Column(name = "seat_type_name", updatable = false, length = 50)
     private String seatTypeName;
 
+    @Column(name = "seat_type_id", updatable = false)
+    private Integer seatTypeId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private SeatHoldStatus status;

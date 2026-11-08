@@ -5,6 +5,9 @@ import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.exception.UpstreamServiceException;
+import fu.mss301.booking.application.exception.VoucherNotFoundException;
+import fu.mss301.booking.application.payment.PaymentView;
+import fu.mss301.booking.domain.voucher.VoucherKind;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
@@ -21,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -36,6 +40,7 @@ class BookingControllerTests {
     private ReplaceBookingCombosUseCase replaceCombos;
     private HandlePayosWebhookUseCase webhook;
     private RefundAdminUseCase refunds;
+    private ApplyVoucherUseCase vouchers;
     private MockMvc mvc;
 
     @BeforeEach
@@ -46,9 +51,10 @@ class BookingControllerTests {
         replaceCombos = mock(ReplaceBookingCombosUseCase.class);
         webhook = mock(HandlePayosWebhookUseCase.class);
         refunds = mock(RefundAdminUseCase.class);
+        vouchers = mock(ApplyVoucherUseCase.class);
         mvc = MockMvcBuilders.standaloneSetup(
                 new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
-                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos),
+                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
@@ -58,8 +64,8 @@ class BookingControllerTests {
     @Test
     void holdReturns201WithLocation() throws Exception {
         when(holdSeats.hold(7, 3L, List.of(101, 102))).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
-            BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), LocalDateTime.now(), LocalDateTime.now(), null,
-            List.of(), List.of(), null));
+            BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), BigDecimal.ZERO, new BigDecimal("180000.00"),
+            LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(), null));
         mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
             .andExpect(status().isCreated())
@@ -109,15 +115,65 @@ class BookingControllerTests {
     @Test
     void replacingCombosPassesTheLinesAndReturnsTheBooking() throws Exception {
         when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 2)))).thenReturn(new BookingView(11,
-            "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"),
-            LocalDateTime.now(), LocalDateTime.now(), null, List.of(),
-            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), null));
+            "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"), BigDecimal.ZERO,
+            new BigDecimal("260000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(),
+            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), List.of(), null));
         mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":2}]}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.totalAmount").value(260000.00))
             .andExpect(jsonPath("$.data.combos[0].name").value("Bắp nước"))
             .andExpect(jsonPath("$.data.combos[0].quantity").value(2));
+    }
+
+    @Test
+    void applyingAVoucherPassesCodeAndSeat() throws Exception {
+        var line = new BookingView.VoucherLine(9, "EMFREE", VoucherKind.TICKET_EXCHANGE, 101, null,
+            new BigDecimal("90000.00"), LocalDate.of(2027, 2, 1));
+        when(vouchers.apply(7, 11, "emfree", 101)).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
+            BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), new BigDecimal("90000.00"),
+            new BigDecimal("90000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(line),
+            null));
+        mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"emfree\",\"seatId\":101}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.subtotal").value(180000.00))
+            .andExpect(jsonPath("$.data.discountAmount").value(90000.00))
+            .andExpect(jsonPath("$.data.vouchers[0].kind").value("TICKET_EXCHANGE"))
+            .andExpect(jsonPath("$.data.vouchers[0].seatId").value(101));
+    }
+
+    @Test
+    void invalidVoucherBodiesAre400AndAnUnknownCodeIs404() throws Exception {
+        for (var body : List.of("{}", "{\"code\":\" \"}", "{\"code\":\"EMX\",\"seatId\":0}")) {
+            mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(vouchers);
+        when(vouchers.apply(7, 11, "NOPE", null)).thenThrow(new VoucherNotFoundException());
+        mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"NOPE\"}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void removingAVoucherUsesDelete() throws Exception {
+        when(vouchers.remove(7, 11, 9)).thenThrow(new InvalidStateTransitionException("link open"));
+        mvc.perform(delete("/api/bookings/11/vouchers/9").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isConflict());
+        verify(vouchers).remove(7, 11, 9);
+    }
+
+    @Test
+    void aFreeBookingSaysNoPaymentIsNeeded() throws Exception {
+        when(initiatePayment.initiate(7, 11)).thenReturn(PaymentView.notRequired(11));
+        mvc.perform(post("/api/bookings/11/payments").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.message").value("Booking confirmed, vouchers cover the whole amount"))
+            .andExpect(jsonPath("$.data.status").value("NOT_REQUIRED"))
+            .andExpect(jsonPath("$.data.amount").value(0))
+            .andExpect(jsonPath("$.data.checkoutUrl").doesNotExist());
     }
 
     @Test

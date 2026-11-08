@@ -96,10 +96,11 @@ class DomainEventPublishingTests {
     }
 
     private static Booking pending(LocalDateTime expiredAt) {
-        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null)), 8,
+        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null, null)), 8,
             NOW.minusMinutes(10), Duration.ofMinutes(5));
         return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
-            held.totalAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(), held.combos());
+            held.totalAmount(), held.discountAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(),
+            held.combos(), held.vouchers());
     }
 
     private static PaymentTransaction pendingPayment() {

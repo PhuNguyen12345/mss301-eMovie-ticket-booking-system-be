@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,4 +29,11 @@ interface VoucherJpaRepository extends JpaRepository<VoucherEntity, Integer> {
 
     @Query("select v from VoucherEntity v join fetch v.claim c where c.userId = :userId order by v.id desc")
     List<VoucherEntity> findOwnedBy(@Param("userId") Integer userId);
+
+    @Query("""
+        select c.voucher.id from UserVoucherEntity c
+        where c.status = fu.mss301.booking.domain.voucher.ClaimStatus.RESERVED and c.updatedAt < :before
+        order by c.updatedAt
+        """)
+    List<Integer> findReservedSince(@Param("before") LocalDateTime before, Pageable limit);
 }

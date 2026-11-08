@@ -1,5 +1,6 @@
 package fu.mss301.booking.presentation.controller;
 
+import fu.mss301.booking.application.booking.ApplyVoucherUseCase;
 import fu.mss301.booking.application.booking.BookingPage;
 import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.BookingSearch;
@@ -12,6 +13,7 @@ import fu.mss301.booking.application.booking.SeatMapView;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentView;
 import fu.mss301.booking.domain.booking.BookingStatus;
+import fu.mss301.booking.presentation.dto.ApplyVoucherRequest;
 import fu.mss301.booking.presentation.dto.HoldSeatsRequest;
 import fu.mss301.booking.presentation.dto.ReplaceCombosRequest;
 import fu.mss301.booking.presentation.security.AuthenticatedUser;
@@ -37,16 +39,18 @@ public class BookingController {
     private final CancelBookingUseCase cancelBooking;
     private final InitiatePaymentUseCase initiatePayment;
     private final ReplaceBookingCombosUseCase replaceCombos;
+    private final ApplyVoucherUseCase vouchers;
 
     public BookingController(SeatMapQuery seatMap, HoldSeatsUseCase holdSeats, BookingQueryService queries,
                              CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment,
-                             ReplaceBookingCombosUseCase replaceCombos) {
+                             ReplaceBookingCombosUseCase replaceCombos, ApplyVoucherUseCase vouchers) {
         this.seatMap = seatMap;
         this.holdSeats = holdSeats;
         this.queries = queries;
         this.cancelBooking = cancelBooking;
         this.initiatePayment = initiatePayment;
         this.replaceCombos = replaceCombos;
+        this.vouchers = vouchers;
     }
 
     @GetMapping
@@ -101,9 +105,25 @@ public class BookingController {
         return ApiResponse.success(replaceCombos.replace(user.id(), id, request.toLines()), "Booking combos updated successfully");
     }
 
+    @PostMapping("/{id}/vouchers")
+    public ApiResponse<BookingView> applyVoucher(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id,
+                                                 @Valid @RequestBody ApplyVoucherRequest request) {
+        return ApiResponse.success(vouchers.apply(user.id(), id, request.code(), request.seatId()),
+            "Voucher applied successfully");
+    }
+
+    @DeleteMapping("/{id}/vouchers/{voucherId}")
+    public ApiResponse<BookingView> removeVoucher(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id,
+                                                  @PathVariable("voucherId") Integer voucherId) {
+        return ApiResponse.success(vouchers.remove(user.id(), id, voucherId), "Voucher removed successfully");
+    }
+
     @PostMapping("/{id}/payments")
     public ApiResponse<PaymentView> pay(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id) {
-        return ApiResponse.success(initiatePayment.initiate(user.id(), id), "Payment link created successfully");
+        var payment = initiatePayment.initiate(user.id(), id);
+        String message = PaymentView.NOT_REQUIRED.equals(payment.status())
+            ? "Booking confirmed, vouchers cover the whole amount" : "Payment link created successfully";
+        return ApiResponse.success(payment, message);
     }
 
     private static PageResponseDTO<BookingView> toResponse(BookingPage<BookingView> result) {

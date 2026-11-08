@@ -69,6 +69,56 @@ public final class Voucher {
         updatedAt = now;
     }
 
+    /**
+     * Holds the voucher for one pending booking of its owner, until that booking is paid or gives it back.
+     * Holding it again for the same booking changes nothing.
+     */
+    public void reserveFor(Integer userId, Integer bookingId, LocalDateTime now) {
+        if (bookingId == null) throw new DomainException("Booking id is required");
+        if (!isOwnedBy(userId)) throw new InvalidStateTransitionException("This voucher belongs to another account");
+        if (claim.status() == ClaimStatus.RESERVED && bookingId.equals(claim.bookingId())) return;
+        if (claim.status() != ClaimStatus.AVAILABLE) throw new InvalidStateTransitionException("This voucher is already in use");
+        if (status != VoucherStatus.ACTIVE) throw new InvalidStateTransitionException("This voucher is no longer active");
+        LocalDate today = now.toLocalDate();
+        if (today.isBefore(terms.startDate())) {
+            throw new DomainException("This voucher can be used from " + terms.startDate());
+        }
+        if (isExpiredOn(today)) throw new DomainException("This voucher has expired");
+        claim.reserve(bookingId, now);
+        updatedAt = now;
+    }
+
+    /**
+     * Gives the voucher back to its owner when the booking holding it did not use it. An expired voucher is
+     * given back too but can no longer be applied.
+     *
+     * @return true when the voucher changed
+     */
+    public boolean releaseFrom(Integer bookingId, LocalDateTime now) {
+        if (claim == null || claim.status() != ClaimStatus.RESERVED || !claim.isHeldBy(bookingId)) return false;
+        claim.release(now);
+        updatedAt = now;
+        return true;
+    }
+
+    /**
+     * The booking holding the voucher was paid. A paid booking is the record of what the customer got, so a
+     * voucher that was given back by mistake is marked used as well.
+     *
+     * @return true when the voucher changed; false when it is already used or another booking holds it
+     */
+    public boolean markUsedBy(Integer bookingId, LocalDateTime now) {
+        if (claim == null || claim.status() == ClaimStatus.USED) return false;
+        if (claim.status() == ClaimStatus.RESERVED && !claim.isHeldBy(bookingId)) return false;
+        claim.use(bookingId, now);
+        updatedAt = now;
+        return true;
+    }
+
+    public boolean isOwnedBy(Integer userId) {
+        return claim != null && claim.userId().equals(userId);
+    }
+
     public boolean isClaimableOn(LocalDate today) {
         return claim == null && status == VoucherStatus.ACTIVE && !isExpiredOn(today);
     }

@@ -1,6 +1,7 @@
 package fu.mss301.booking.application.payment;
 
 import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.PaymentGateway.CheckoutLink;
@@ -16,7 +17,10 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-/** Opens (or re-uses) a PayOS checkout link for a pending booking. */
+/**
+ * Opens (or re-uses) a PayOS checkout link for a pending booking. When vouchers cover the whole amount the
+ * booking is confirmed straight away and no link is created.
+ */
 public class InitiatePaymentUseCase {
     /** orderCode = bookingId * 100 + attempt, so codes are unique and traceable to the booking. */
     static final int MAX_ATTEMPTS = 99;
@@ -25,18 +29,21 @@ public class InitiatePaymentUseCase {
     private final PaymentRepository payments;
     private final PaymentGateway gateway;
     private final Transactions transactions;
+    private final DomainEvents events;
     private final Clock clock;
 
     public InitiatePaymentUseCase(BookingRepository bookings, PaymentRepository payments, PaymentGateway gateway,
-                                  Transactions transactions, Clock clock) {
+                                  Transactions transactions, DomainEvents events, Clock clock) {
         this.bookings = bookings;
         this.payments = payments;
         this.gateway = gateway;
         this.transactions = transactions;
+        this.events = events;
         this.clock = clock;
     }
 
     public PaymentView initiate(Integer userId, Integer bookingId) {
+        transactions.run(() -> removeExpiredVouchers(userId, bookingId));
         Draft draft = transactions.write(() -> createDraft(userId, bookingId));
         if (draft.existing() != null) return draft.existing();
 
@@ -57,6 +64,18 @@ public class InitiatePaymentUseCase {
         });
     }
 
+    /** A voucher whose last day has passed comes off before the price goes to PayOS; an open link keeps its price. */
+    private void removeExpiredVouchers(Integer userId, Integer bookingId) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        var booking = bookings.findByIdForUpdate(bookingId).filter(b -> b.isOwnedBy(userId))
+            .orElseThrow(BookingNotFoundException::new);
+        if (!booking.isPayableAt(now) || !booking.hasExpiredVoucherOn(now.toLocalDate())) return;
+        if (!payments.findPendingByBookingIdForUpdate(bookingId).isEmpty()) return;
+        booking.removeExpiredVouchers(now);
+        bookings.save(booking);
+        events.publish(booking.pullEvents());
+    }
+
     private Draft createDraft(Integer userId, Integer bookingId) {
         LocalDateTime now = LocalDateTime.now(clock);
         // The booking row lock serializes concurrent "pay" clicks for the same booking.
@@ -72,6 +91,16 @@ public class InitiatePaymentUseCase {
                 throw new InvalidStateTransitionException("A payment link is already being created for this booking");
             }
             return new Draft(PaymentView.of(current), null, 0, 0, null);
+        }
+        if (booking.hasExpiredVoucherOn(now.toLocalDate())) {
+            // A voucher expired at midnight between the two steps; this transaction must not change the booking.
+            throw new InvalidStateTransitionException("A voucher on this booking has just expired, please try again");
+        }
+        if (booking.totalAmount().signum() == 0) {
+            booking.confirm(now);
+            bookings.save(booking);
+            events.publish(booking.pullEvents());
+            return new Draft(PaymentView.notRequired(bookingId), null, 0, 0, null);
         }
         long attempt = payments.countByBookingId(bookingId) + 1;
         if (attempt > MAX_ATTEMPTS) throw new InvalidStateTransitionException("Too many payment attempts for this booking");
