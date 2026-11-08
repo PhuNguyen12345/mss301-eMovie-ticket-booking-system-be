@@ -21,6 +21,8 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | PUT | `/api/bookings/{id}/combos` | Chủ booking | Thay toàn bộ combo của booking, tính lại tổng tiền | 200 |
 | POST | `/api/bookings/{id}/vouchers` | Chủ booking | Áp voucher, tính lại tổng tiền | 200 |
 | DELETE | `/api/bookings/{id}/vouchers/{voucherId}` | Chủ booking | Gỡ voucher, trả lại lượt dùng | 200 |
+| GET | `/api/bookings/{id}/qr` | Chủ booking / ADMIN | Ảnh PNG mã QR của vé đã thanh toán | 200 |
+| POST | `/api/bookings/check-in` | ADMIN | Soát vé tại rạp bằng mã đặt vé | 200 |
 | POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS. Đơn 0đ được xác nhận luôn | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
@@ -126,6 +128,7 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
     ],
     "combos": [],
     "vouchers": [],
+    "admittedCount": 0,
     "payment": null
   }
 }
@@ -414,6 +417,40 @@ Chỉ áp hoặc gỡ được khi booking `PENDING_PAYMENT`, còn hạn giữ g
 | 404 | Không có booking của tôi, mã không thuộc tôi, gỡ voucher không có trên booking |
 | 409 | Booking không còn chờ thanh toán, đã có link thanh toán, voucher đã dùng hoặc đang ở booking khác, voucher đã tắt |
 
+### 2.11 Mã QR và check-in tại rạp
+
+**Mã QR cho khách.** `GET /api/bookings/{id}/qr` trả ảnh PNG 300x300, nội dung là `bookingCode`. Chỉ chủ booking hoặc ADMIN xem được, và chỉ khi booking `CONFIRMED`. Request cần JWT, nên FE tải ảnh bằng `fetch` rồi gán `URL.createObjectURL(blob)` cho thẻ `img`.
+
+**Soát vé (ADMIN).** Một mã đại diện cho cả booking. Đoàn đến lệch giờ thì nhân viên ghi số người vào, người đến sau quét lại chính mã đó.
+
+`POST /api/bookings/check-in`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `bookingCode` | string | Bắt buộc, không phân biệt hoa thường |
+| `quantity` | number | Tùy chọn, số người vào lần này. Bỏ trống là toàn bộ số người còn lại |
+
+```json
+{
+  "bookingCode": "BK2611081431005BSKBM", "status": "CONFIRMED", "movieTitle": "Dune",
+  "cinemaName": "Rạp Hà Nội", "screenName": "Phòng chiếu 1", "startTime": "2027-01-21T19:00:00",
+  "seats": [{"seatId": 101, "rowCode": "A", "seatNumber": 1, "seatTypeName": "Ghế thường"}],
+  "seatCount": 3, "admittedCount": 2, "remaining": 1,
+  "checkIns": [{"quantity": 2, "checkedInAt": "2027-01-21T18:50:00", "checkedInBy": 1}]
+}
+```
+
+Khung giờ check-in: từ 15 phút trước giờ chiếu (`BOOKING_CHECK_IN_OPENS_BEFORE`) đến 20 phút sau giờ chiếu (`BOOKING_CHECK_IN_CLOSES_AFTER`), tính cả hai mốc. Giờ chiếu lấy theo thông tin in trên vé. Booking tạo trước khi lưu bản sao vé thì hỏi showtime-service.
+
+Hai máy quét cùng lúc thì lần lượt được xử lý, tổng số người không bao giờ vượt số ghế. `BookingView` có thêm `admittedCount` để khách thấy đã vào bao nhiêu người.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Thiếu mã, `quantity` nhỏ hơn 1 hoặc lớn hơn số người còn lại |
+| 403 | Không phải ADMIN |
+| 404 | Không có booking với mã này. QR của booking không phải của mình |
+| 409 | Booking chưa thanh toán, ngoài khung giờ (message ghi giờ mở và đóng), hoặc mọi người đã vào. Trường hợp đã vào hết, `data` chứa thông tin như trên, kèm các lần quét trước |
+
 ## 3. State machine
 
 ```mermaid
@@ -510,6 +547,8 @@ khách nhận voucher giá trị bằng số tiền đó và payment chuyển `R
 | `BOOKING_EXPIRY_SCAN_INTERVAL` | `PT30S` | Chu kỳ job hết hạn + đối soát |
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
 | `BOOKING_VALUE_VOUCHER_TTL` | `P90D` | Voucher giá trị dùng được bao nhiêu ngày, tính cả ngày phát |
+| `BOOKING_CHECK_IN_OPENS_BEFORE` | `PT15M` | Mở check-in bao lâu trước giờ chiếu |
+| `BOOKING_CHECK_IN_CLOSES_AFTER` | `PT20M` | Còn check-in được bao lâu sau giờ chiếu |
 | `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
 | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
@@ -606,6 +645,7 @@ và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 | `vouchers.kind`, `seat_type_id`, `combo_id` | Loại voucher và điều kiện áp dụng |
 | `vouchers.version` | Optimistic locking (`@Version`) |
 | `user_vouchers.booking_id` | Booking đang giữ hoặc đã dùng voucher |
+| Bảng `booking_check_ins` | Mỗi lần quét: số người vào, nhân viên quét, thời điểm. Chỉ thêm, không sửa |
 | `vouchers.source_payment_id`, `source_booking_id` | Nguồn của voucher giá trị, `UNIQUE` để không phát trùng |
 | `refunds.method`, `voucher_id` | `MANUAL` là chuyển khoản tay, `VOUCHER` là trả bằng voucher. Refund cũ là `MANUAL` |
 | `booking_seats.seat_type_id` | Để voucher lọc theo loại ghế. `NULL` với booking cũ |
