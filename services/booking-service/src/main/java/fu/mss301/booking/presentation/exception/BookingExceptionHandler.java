@@ -8,8 +8,10 @@ import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.RefundNotFoundException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.exception.UpstreamServiceException;
+import fu.mss301.booking.application.exception.VoucherNotFoundException;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
+import fu.mss301.booking.domain.voucher.VoucherCodeTakenException;
 import fu.mss301.common.dto.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,13 +34,14 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 public class BookingExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(BookingExceptionHandler.class);
 
-    @ExceptionHandler({BookingNotFoundException.class, RefundNotFoundException.class, ComboNotFoundException.class})
+    @ExceptionHandler({BookingNotFoundException.class, RefundNotFoundException.class, ComboNotFoundException.class,
+        VoucherNotFoundException.class})
     ResponseEntity<ApiResponse<String>> notFound(RuntimeException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
     @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class,
-        ComboUnavailableException.class})
+        ComboUnavailableException.class, VoucherCodeTakenException.class})
     ResponseEntity<ApiResponse<String>> conflict(RuntimeException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }

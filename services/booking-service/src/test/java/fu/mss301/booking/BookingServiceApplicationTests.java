@@ -13,6 +13,16 @@ import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView.Availability;
 import fu.mss301.booking.application.combo.ComboCommand;
 import fu.mss301.booking.application.combo.ComboService;
+import fu.mss301.booking.application.exception.ComboNotFoundException;
+import fu.mss301.booking.application.exception.VoucherNotFoundException;
+import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.application.voucher.VoucherCommand;
+import fu.mss301.booking.application.voucher.VoucherService;
+import fu.mss301.booking.domain.voucher.ClaimStatus;
+import fu.mss301.booking.domain.voucher.DiscountType;
+import fu.mss301.booking.domain.voucher.VoucherAvailability;
+import fu.mss301.booking.domain.voucher.VoucherCodeTakenException;
+import fu.mss301.booking.domain.voucher.VoucherKind;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
@@ -98,6 +108,7 @@ class BookingServiceApplicationTests {
     @Autowired private RefundAdminUseCase refunds;
     @Autowired private MutableClock clock;
     @Autowired private ComboService comboService;
+    @Autowired private VoucherService voucherService;
     @Autowired private ReplaceBookingCombosUseCase replaceCombos;
     @Autowired private BookingRepository repository;
     @Autowired private Transactions transactions;
@@ -156,6 +167,103 @@ class BookingServiceApplicationTests {
             assertEquals(1, winners);
         }
         assertEquals(Availability.HELD, availability(101));
+    }
+
+    @Test
+    void concurrentClaimsOfTheSameCodeLetExactlyOneWin() throws Exception {
+        var voucher = voucherService.create(voucherCommand(null));
+        var barrier = new CyclicBarrier(8);
+        var userIds = new AtomicLong(5000);
+        Callable<Boolean> attempt = () -> {
+            int userId = (int) userIds.incrementAndGet();
+            barrier.await(5, TimeUnit.SECONDS);
+            try {
+                voucherService.claim(userId, voucher.code());
+                return true;
+            } catch (VoucherNotFoundException exception) {
+                return false;
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(8)) {
+            long winners = 0;
+            for (var result : executor.invokeAll(java.util.Collections.nCopies(8, attempt))) if (result.get()) winners++;
+            assertEquals(1, winners);
+        }
+        assertNotNull(voucherService.get(voucher.id()).ownerId());
+    }
+
+    @Test
+    void voucherIsStoredWithItsTermsAndOwner() {
+        var today = java.time.LocalDate.now(clock);
+        int owner = (int) (SHOWTIME_IDS.incrementAndGet() % Integer.MAX_VALUE);
+        var created = voucherService.create(new VoucherCommand(null, VoucherKind.TICKET_EXCHANGE, null, null, today,
+            today.plusDays(3), null, 2, null));
+        assertTrue(created.code().startsWith("EM"));
+        assertEquals(new BigDecimal("100.00"), created.discountValue());
+        assertEquals(DiscountType.PERCENT, created.discountType());
+
+        var assigned = voucherService.assign(created.id(), owner);
+        assertEquals(owner, assigned.ownerId());
+        assertEquals(ClaimStatus.AVAILABLE, assigned.claimStatus());
+        var mine = voucherService.mine(owner);
+        assertEquals(1, mine.size());
+        assertEquals(created.code(), mine.getFirst().code());
+        assertEquals(VoucherAvailability.AVAILABLE, mine.getFirst().status());
+        assertTrue(voucherService.mine(owner + 1).isEmpty());
+    }
+
+    @Test
+    void usedUpKnownAndUnknownCodesAnswerTheSame() {
+        var today = java.time.LocalDate.now(clock);
+        var owned = voucherService.create(voucherCommand(null));
+        voucherService.assign(owned.id(), 7101);
+        var inactive = voucherService.create(voucherCommand(null));
+        voucherService.deactivate(inactive.id());
+        var expired = voucherService.create(new VoucherCommand(null, VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED,
+            new BigDecimal("1000"), today.minusDays(5), today.minusDays(1), null, null, null));
+
+        for (String code : List.of(owned.code(), inactive.code(), expired.code(), "NOT-A-REAL-CODE")) {
+            assertThrows(VoucherNotFoundException.class, () -> voucherService.claim(7102, code), code);
+        }
+        assertEquals(7101, voucherService.get(owned.id()).ownerId());
+    }
+
+    @Test
+    void customerTypesACodeInAnyCase() {
+        var voucher = voucherService.create(voucherCommand(null));
+        var claimed = voucherService.claim(7201, " " + voucher.code().toLowerCase(java.util.Locale.ROOT) + " ");
+        assertEquals(voucher.code(), claimed.code());
+    }
+
+    @Test
+    void aCodeCanOnlyExistOnce() {
+        String code = "DUP-" + System.nanoTime();
+        voucherService.create(voucherCommand(code));
+        assertThrows(VoucherCodeTakenException.class, () -> voucherService.create(voucherCommand(code)));
+    }
+
+    @Test
+    void voucherReferencesMustExist() {
+        var today = java.time.LocalDate.now(clock);
+        assertThrows(DomainException.class, () -> voucherService.create(new VoucherCommand(null,
+            VoucherKind.TICKET_EXCHANGE, null, null, today, today, null, 99, null)));
+        assertThrows(ComboNotFoundException.class, () -> voucherService.create(new VoucherCommand(null,
+            VoucherKind.COMBO_EXCHANGE, null, null, today, today, null, null, Integer.MAX_VALUE)));
+    }
+
+    @Test
+    void adminListIsPagedAndNewestFirst() {
+        var first = voucherService.create(voucherCommand(null));
+        var second = voucherService.create(voucherCommand(null));
+        var page = voucherService.list(0, 2);
+        assertEquals(List.of(second.id(), first.id()), page.content().stream().map(v -> v.id()).toList());
+        assertThrows(DomainException.class, () -> voucherService.list(0, 101));
+    }
+
+    private VoucherCommand voucherCommand(String code) {
+        var today = java.time.LocalDate.now(clock);
+        return new VoucherCommand(code, VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED, new BigDecimal("20000"), today,
+            today.plusDays(30), null, null, null);
     }
 
     @Test

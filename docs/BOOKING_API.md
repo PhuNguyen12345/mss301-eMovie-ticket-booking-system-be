@@ -30,6 +30,15 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | PUT | `/api/combos/{id}` | ADMIN | Sửa tên, mô tả, giá | 200 |
 | POST | `/api/combos/{id}/activate` | ADMIN | Mở bán lại | 200 |
 | POST | `/api/combos/{id}/deactivate` | ADMIN | Ngừng bán | 200 |
+| GET | `/api/vouchers` | ADMIN | Danh sách voucher, phân trang | 200 |
+| GET | `/api/vouchers/{id}` | ADMIN | Chi tiết voucher | 200 |
+| POST | `/api/vouchers` | ADMIN | Tạo voucher | 201 + `Location` |
+| PUT | `/api/vouchers/{id}` | ADMIN | Sửa voucher chưa có chủ | 200 |
+| POST | `/api/vouchers/{id}/activate` | ADMIN | Bật voucher | 200 |
+| POST | `/api/vouchers/{id}/deactivate` | ADMIN | Tắt voucher | 200 |
+| POST | `/api/vouchers/{id}/assign` | ADMIN | Gán voucher cho một tài khoản | 200 |
+| GET | `/api/vouchers/me` | Đăng nhập | Voucher của tôi | 200 |
+| POST | `/api/vouchers/claim` | Đăng nhập | Nhập mã để nhận voucher | 200 |
 
 ### Mã lỗi chung
 
@@ -252,6 +261,62 @@ curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:
 | 401 | Chưa đăng nhập |
 | 403 | Không phải ADMIN |
 
+### 2.9 Voucher
+
+Một mã thuộc một tài khoản và dùng một lần. Phần này mới gồm quản lý và nhận mã, chưa áp được vào booking.
+
+| `kind` | Áp dụng cho |
+| --- | --- |
+| `TICKET_EXCHANGE` | 1 vé, thay toàn bộ giá vé, có thể giới hạn theo loại ghế |
+| `TICKET_DISCOUNT` | Tổng giá vé của booking, tiền cố định hoặc % |
+| `COMBO_EXCHANGE` | 1 suất của đúng 1 loại combo |
+| `COMBO_DISCOUNT` | Tổng tiền combo của booking, tiền cố định hoặc % |
+| `VALUE` | Toàn bộ đơn. Hệ thống tự phát, admin không tạo được |
+
+**Quản lý voucher (ADMIN).** Body của `POST /api/vouchers` và `PUT /api/vouchers/{id}`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `code` | string | Tùy chọn, 4 đến 50 ký tự gồm chữ, số, dấu gạch ngang. Để trống thì tự sinh. `PUT` bỏ qua field này |
+| `kind` | string | Bắt buộc |
+| `discountType` | string | `FIXED` hoặc `PERCENT`. Bắt buộc với voucher giảm giá, voucher đổi luôn là 100% |
+| `discountValue` | number | `FIXED`: số tiền nguyên từ 1 đến 99.999.999. `PERCENT`: số nguyên từ 1 đến 100 |
+| `startDate`, `endDate` | date | Bắt buộc, `endDate` là ngày cuối còn dùng được |
+| `minOrderAmount` | number | Tùy chọn, chỉ cho voucher giảm giá |
+| `seatTypeId` | number | Tùy chọn, chỉ cho voucher vé, phải tồn tại ở cinema-service |
+| `comboId` | number | Bắt buộc với `COMBO_EXCHANGE`, các loại khác không được có |
+
+```bash
+curl -X POST http://localhost:8080/api/vouchers \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"kind":"TICKET_DISCOUNT","discountType":"PERCENT","discountValue":10,
+       "startDate":"2027-01-01","endDate":"2027-01-31","minOrderAmount":100000}'
+```
+
+```json
+{
+  "id": 5, "code": "EM7K2QXPLM4R9T", "kind": "TICKET_DISCOUNT",
+  "discountType": "PERCENT", "discountValue": 10.00,
+  "startDate": "2027-01-01", "endDate": "2027-01-31", "minOrderAmount": 100000.00,
+  "seatTypeId": null, "comboId": null, "status": "ACTIVE", "ownerId": null, "claimStatus": null
+}
+```
+
+Voucher đã có chủ thì không sửa được, để giá trị của khách không bị đổi. Không có API xóa, dùng `deactivate` để tắt.
+
+`POST /api/vouchers/{id}/assign` với `{"userId": 7}` gán mã cho một tài khoản. Booking-service không kiểm tra `userId` có tồn tại, vì hiện không gọi user-service.
+
+**Khách hàng**
+- `GET /api/vouchers/me`: voucher của tôi, mới nhất trước. `status` là `AVAILABLE`, `RESERVED`, `USED`, `EXPIRED` hoặc `INACTIVE`.
+- `POST /api/vouchers/claim` với `{"code": "EM7K2QXPLM4R9T"}`: nhập mã để nhận về tài khoản, không phân biệt hoa thường.
+
+| Lỗi | Khi nào |
+| --- | --- |
+| 400 | Sai ràng buộc ở trên, `seatTypeId` không tồn tại |
+| 403 | Khách gọi API quản lý |
+| 404 | Không có voucher hoặc combo. `claim` cũng trả 404 khi mã đã có chủ, đã tắt hoặc hết hạn, để không lộ mã nào có thật |
+| 409 | Trùng `code`, sửa voucher đã có chủ, gán voucher đã có chủ, đã tắt hoặc hết hạn |
+
 ## 3. State machine
 
 ```mermaid
@@ -424,7 +489,7 @@ Booking gọi qua OpenFeign (`infrastructure/client`), chỉ khi xem sơ đồ g
 ## 8. Schema `booking_db` và điểm khác ERD
 
 Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transactions`, `refunds`, `combos`, `booking_combos`, `vouchers`, `user_vouchers`
-(voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
+(voucher chưa áp được vào booking). Các cột thêm so với ERD và lý do:
 
 | Bảng.cột | Lý do |
 | --- | --- |
@@ -437,6 +502,11 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `bookings.movie_title`, `movie_poster_url`, `start_time`, `end_time`, `cinema_name`, `screen_name` | Bản sao thông tin vé lúc giữ ghế. `NULL` với booking cũ |
 | `booking_seats.row_code`, `seat_number`, `seat_type_name` | Bản sao thông tin ghế. `NULL` với booking cũ |
 | `booking_combos.combo_name` | Giữ tên combo lúc mua |
+| `vouchers.kind`, `seat_type_id`, `combo_id` | Loại voucher và điều kiện áp dụng |
+| `vouchers.version` | Optimistic locking (`@Version`) |
+| `user_vouchers.booking_id` | Booking đang giữ voucher |
+
+`vouchers.usage_limit` theo ERD được giữ lại nhưng không dùng, vì mỗi mã chỉ dùng một lần. `uq_user_vouchers_voucher` đảm bảo mỗi mã có tối đa một chủ.
 
 `idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
 

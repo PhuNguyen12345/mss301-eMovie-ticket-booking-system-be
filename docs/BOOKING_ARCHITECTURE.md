@@ -11,11 +11,13 @@ fu.mss301.booking
   domain/
     booking/         Booking, BookingSeat, BookingCombo, BookingCode, BookingRepository, event/
     combo/           Combo, ComboRepository
+    voucher/         Voucher, VoucherClaim, VoucherTerms, VoucherCode, VoucherRepository
     payment/         PaymentTransaction, Refund, PaymentRepository, event/
     shared/          DomainEvent, DomainException, InvalidStateTransitionException
   application/
     booking/         Use case và view của booking
     combo/           Danh mục combo
+    voucher/         Quản lý và nhận voucher
     payment/         Use case và view của thanh toán, hoàn tiền
     policy/          Phản ứng với domain event
     port/            Transactions, DomainEvents, BookingQueries, ShowtimeCatalog,
@@ -83,6 +85,12 @@ Repository adapter yêu cầu có transaction (`MANDATORY`) vì mapper phải đ
 - `version()` trên aggregate chỉ để adapter so sánh. Lệch version sẽ trả 409.
 - `active_flag` là generated column, không được map vào entity.
 - `save()` flush ngay, để lỗi `uq_booking_seats_active` được đổi thành `SeatAlreadyTakenException` rồi trả về 409.
+
+## Voucher
+
+`Voucher` là aggregate riêng, mỗi dòng là một mã. `VoucherClaim` là con của nó, tương ứng dòng `user_vouchers`, cho biết mã thuộc về ai. Mọi thay đổi đều khóa dòng `vouchers`, nên hai người nhận cùng một mã thì người sau đọc được mã đã có chủ. `uq_user_vouchers_voucher` là lớp chặn cuối ở DB.
+
+`VoucherTerms` gom các điều kiện của voucher và tự kiểm tra lúc tạo. `claim` trả cùng một lỗi cho mọi trường hợp không dùng được, để không ai dò được mã thật.
 
 ## Combo
 
