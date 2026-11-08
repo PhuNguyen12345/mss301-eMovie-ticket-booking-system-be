@@ -209,6 +209,33 @@ class BookingVoucherTest {
     }
 
     @Test
+    void aVoucherMustLeaveNothingOrAtLeastTheBankMinimumToPay() {
+        Booking booking = hold(seat(1, "90000", STANDARD));
+        assertThrows(DomainException.class,
+            () -> booking.applyVoucher(fixed(1, VoucherKind.TICKET_DISCOUNT, "89000", null), null, NOW));
+        assertTrue(booking.vouchers().isEmpty());
+        assertEquals(new BigDecimal("90000.00"), booking.totalAmount());
+        assertTrue(booking.hasPayableAmount());
+
+        booking.applyVoucher(fixed(2, VoucherKind.TICKET_DISCOUNT, "88000", null), null, NOW);
+        assertEquals(new BigDecimal("2000.00"), booking.totalAmount());
+        booking.applyVoucher(value(3, "2000"), null, NOW);
+        assertEquals(new BigDecimal("0.00"), booking.totalAmount());
+        assertTrue(booking.hasPayableAmount());
+    }
+
+    @Test
+    void fewerCombosCanLeaveAnAmountTooSmallToPay() {
+        Booking booking = hold(seat(1, "90000", STANDARD));
+        booking.replaceCombos(List.of(combo(5, 2, "1500")), NOW);
+        booking.applyVoucher(offer(1, VoucherKind.TICKET_EXCHANGE), 1, NOW);
+        assertEquals(new BigDecimal("3000.00"), booking.totalAmount());
+        booking.replaceCombos(List.of(combo(5, 1, "1500")), NOW);
+        assertEquals(new BigDecimal("1500.00"), booking.totalAmount());
+        assertFalse(booking.hasPayableAmount());
+    }
+
+    @Test
     void removingAVoucherRestoresThePriceAndRaisesAnEvent() {
         Booking booking = persisted(booking());
         booking.applyVoucher(offer(1, VoucherKind.TICKET_EXCHANGE), 1, NOW);

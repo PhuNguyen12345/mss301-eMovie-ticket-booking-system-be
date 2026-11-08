@@ -165,6 +165,7 @@ Booking tạo trước khi có tính năng này trả `ticket: null`, các field
 ```
 
 Booking đó có `payment: null`. FE kiểm tra `status` để không redirect sang PayOS.
+- Số tiền phải trả phải là 0 hoặc từ 2.000đ, vì ngân hàng không nhận chuyển khoản nhỏ hơn. Nếu bớt combo làm tổng còn từ 1đ đến 1.999đ thì trả 400 và không tạo link, khách cần gỡ voucher hoặc thêm combo.
 
 ```json
 {
@@ -376,7 +377,7 @@ Trả về booking đã tính lại tiền:
 4. `COMBO_DISCOUNT`: trên tiền combo còn lại sau bước 3.
 5. `VALUE`: trên số tiền còn lại.
 
-Giảm theo % làm tròn xuống đồng. Giảm cố định không vượt phần tiền nó được tính trên, phần dư mất. `minOrderAmount` so với đúng phần tiền đó, ví dụ `COMBO_DISCOUNT` so với tiền combo. Mỗi booking dùng tối đa một mã mỗi loại `TICKET_DISCOUNT`, `COMBO_DISCOUNT`, `VALUE`.
+Sau khi áp, số còn phải trả phải là 0 hoặc từ 2.000đ, nếu không voucher bị từ chối. Giảm theo % làm tròn xuống đồng. Giảm cố định không vượt phần tiền nó được tính trên, phần dư mất. `minOrderAmount` so với đúng phần tiền đó, ví dụ `COMBO_DISCOUNT` so với tiền combo. Mỗi booking dùng tối đa một mã mỗi loại `TICKET_DISCOUNT`, `COMBO_DISCOUNT`, `VALUE`.
 
 **Khi combo thay đổi.** `PUT /api/bookings/{id}/combos` tính lại mọi voucher. Voucher không còn áp được sẽ tự gỡ và trả lại lượt: `COMBO_DISCOUNT` khi tiền combo dưới `minOrderAmount` hoặc hết combo, `COMBO_EXCHANGE` dư khi bớt suất. Response không còn voucher đó trong `vouchers`.
 
@@ -392,7 +393,7 @@ Chỉ áp hoặc gỡ được khi booking `PENDING_PAYMENT`, còn hạn giữ g
 
 | HTTP | Khi nào |
 | --- | --- |
-| 400 | Thiếu `code`, voucher hết hạn hoặc chưa tới ngày, sai loại ghế, booking không có combo của voucher, chưa đủ `minOrderAmount`, đã có một mã cùng loại, voucher làm mã khác trên booking không còn đủ điều kiện |
+| 400 | Thiếu `code`, số còn phải trả từ 1đ đến 1.999đ, voucher hết hạn hoặc chưa tới ngày, sai loại ghế, booking không có combo của voucher, chưa đủ `minOrderAmount`, đã có một mã cùng loại, voucher làm mã khác trên booking không còn đủ điều kiện |
 | 404 | Không có booking của tôi, mã không thuộc tôi, gỡ voucher không có trên booking |
 | 409 | Booking không còn chờ thanh toán, đã có link thanh toán, voucher đã dùng hoặc đang ở booking khác, voucher đã tắt |
 

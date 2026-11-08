@@ -6,6 +6,7 @@ import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.port.PaymentGateway;
 import fu.mss301.booking.application.port.PaymentGateway.CheckoutLink;
 import fu.mss301.booking.application.port.PaymentGateway.LinkRequest;
+import fu.mss301.booking.domain.booking.Booking;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.payment.PaymentRepository;
 import fu.mss301.booking.domain.payment.PaymentTransaction;
@@ -95,6 +96,11 @@ public class InitiatePaymentUseCase {
         if (booking.hasExpiredVoucherOn(now.toLocalDate())) {
             // A voucher expired at midnight between the two steps; this transaction must not change the booking.
             throw new InvalidStateTransitionException("A voucher on this booking has just expired, please try again");
+        }
+        if (!booking.hasPayableAmount()) {
+            // Reached when combos change after vouchers were applied, or when a showtime is priced below it.
+            throw new DomainException("The amount to pay must be 0 or at least " + Booking.MIN_PAYMENT.toPlainString()
+                + " VND, please change the vouchers or combos");
         }
         if (booking.totalAmount().signum() == 0) {
             booking.confirm(now);

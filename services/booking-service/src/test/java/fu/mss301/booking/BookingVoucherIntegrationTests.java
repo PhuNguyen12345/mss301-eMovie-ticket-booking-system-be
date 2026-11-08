@@ -243,6 +243,26 @@ class BookingVoucherIntegrationTests {
     }
 
     @Test
+    void aVoucherLeavingLessThan2000IsRefusedAndSuchAnAmountIsNeverSentToPayos() {
+        String tooBig = voucher(VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED, "89000", null, null);
+        var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        assertThrows(DomainException.class, () -> vouchers.apply(user, booking.id(), tooBig, null));
+        assertEquals("AVAILABLE", claimStatus(tooBig));
+
+        Integer combo = comboService.create(new ComboCommand("Combo " + System.nanoTime(), null, new BigDecimal("1500")))
+            .id();
+        replaceCombos.replace(user, booking.id(), List.of(new ComboLine(combo, 2)));
+        String free = voucher(VoucherKind.TICKET_EXCHANGE, null, null, null, null);
+        assertEquals(new BigDecimal("3000.00"), vouchers.apply(user, booking.id(), free, 101).totalAmount());
+        assertEquals(new BigDecimal("1500.00"),
+            replaceCombos.replace(user, booking.id(), List.of(new ComboLine(combo, 1))).totalAmount());
+        assertThrows(DomainException.class, () -> initiatePayment.initiate(user, booking.id()));
+        verify(gateway, never()).createLink(any());
+        assertEquals(0, jdbc.queryForObject("select count(*) from payment_transactions where booking_id = ?",
+            Integer.class, booking.id()));
+    }
+
+    @Test
     void vouchersCannotChangeOnceALinkExists() {
         String code = voucher(VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED, "10000", null, null);
         var booking = holdSeats.hold(user, showtimeId, List.of(101));

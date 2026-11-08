@@ -30,6 +30,8 @@ import java.util.stream.Collectors;
 public final class Booking {
     public static final int MAX_COMBO_QUANTITY = 20;
     private static final BigDecimal MAX_TOTAL = new BigDecimal("99999999.99");
+    /** Banks do not take transfers below this, so an amount to pay is either zero or at least this much. */
+    public static final BigDecimal MIN_PAYMENT = new BigDecimal("2000");
 
     private final Integer id;
     private final Integer userId;
@@ -179,6 +181,10 @@ public final class Booking {
         var candidates = new ArrayList<>(vouchers);
         candidates.add(BookingVoucher.apply(offer, seatId, now));
         var pricing = VoucherPricing.price(seats, combos, candidates, true);
+        if (!isPayable(subtotal().subtract(pricing.discount()))) {
+            throw new DomainException("A voucher cannot leave less than " + MIN_PAYMENT.toPlainString()
+                + " VND to pay, the bank does not accept smaller transfers");
+        }
         vouchers.add(candidates.getLast());
         applyPricing(pricing, now);
     }
@@ -218,6 +224,15 @@ public final class Booking {
 
     public boolean hasExpiredVoucherOn(LocalDate today) {
         return vouchers.stream().anyMatch(voucher -> voucher.isExpiredOn(today));
+    }
+
+    /** False when the amount left is above zero but too small for a bank transfer. */
+    public boolean hasPayableAmount() {
+        return isPayable(totalAmount);
+    }
+
+    private static boolean isPayable(BigDecimal amount) {
+        return amount.signum() == 0 || amount.compareTo(MIN_PAYMENT) >= 0;
     }
 
     /** Seats plus combos, before vouchers. */
