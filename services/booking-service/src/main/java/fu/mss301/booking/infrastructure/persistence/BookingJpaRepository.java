@@ -38,6 +38,12 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, Jp
         """)
     List<Integer> findIdsByStatusNotCompensated(@Param("status") BookingStatus status, Pageable limit);
 
+    @Query("""
+        select b.id from BookingEntity b where b.id > :afterId and (b.movieId is null or b.cinemaId is null)
+        order by b.id
+        """)
+    List<Integer> findIdsMissingCatalogIds(@Param("afterId") Integer afterId, Pageable limit);
+
     Page<BookingEntity> findByUserId(Integer userId, Pageable pageable);
 
     @Query("select b.id from BookingEntity b where b.status = :status and b.expiredAt <= :now order by b.expiredAt")

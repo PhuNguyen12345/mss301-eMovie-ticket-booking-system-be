@@ -121,6 +121,9 @@ class BookingShowtimeCancelledIntegrationTests {
     @Test
     void aBookingWaitingForPaymentIsCancelledAndItsLinkClosed() {
         var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        assertEquals(Map.of("movie_id", 8, "cinema_id", 2),
+            jdbc.queryForMap("SELECT movie_id, cinema_id FROM bookings WHERE id = ?", booking.id()),
+            "A new ticket stores the movie and cinema ids");
         var payment = initiatePayment.initiate(user, booking.id());
         cancelShowtime();
 

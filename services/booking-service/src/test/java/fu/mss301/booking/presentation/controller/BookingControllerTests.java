@@ -1,5 +1,13 @@
 package fu.mss301.booking.presentation.controller;
 
+import fu.mss301.booking.application.port.BookingStatistics;
+import fu.mss301.booking.application.port.Transactions;
+import fu.mss301.booking.application.statistics.StatisticsFigures;
+import fu.mss301.booking.application.statistics.StatisticsGroup;
+import fu.mss301.booking.application.statistics.StatisticsQuery;
+import fu.mss301.booking.application.statistics.StatisticsRow;
+import java.util.Map;
+import java.util.function.Supplier;
 import fu.mss301.booking.application.booking.*;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
@@ -45,6 +53,7 @@ class BookingControllerTests {
     private CheckInUseCase checkIn;
     private TicketQrUseCase ticketQr;
     private ShowtimeCancellationUseCase showtimeCancellation;
+    private BookingStatistics statistics;
     private MockMvc mvc;
 
     @BeforeEach
@@ -59,14 +68,65 @@ class BookingControllerTests {
         checkIn = mock(CheckInUseCase.class);
         ticketQr = mock(TicketQrUseCase.class);
         showtimeCancellation = mock(ShowtimeCancellationUseCase.class);
+        statistics = mock(BookingStatistics.class);
+        Transactions inline = new Transactions() {
+            public <T> T read(Supplier<T> work) { return work.get(); }
+            public <T> T write(Supplier<T> work) { return work.get(); }
+        };
         mvc = MockMvcBuilders.standaloneSetup(
                 new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
                     mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers, checkIn, ticketQr,
-                    showtimeCancellation),
+                    showtimeCancellation, new StatisticsQuery(statistics, inline)),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
             .build();
+    }
+
+    @Test
+    void statisticsUseShowtimeDatesAndAcceptLowerCaseGroups() throws Exception {
+        var figures = new StatisticsFigures(2, 3, new BigDecimal("330000"), new BigDecimal("170000"),
+            new BigDecimal("114000"), new BigDecimal("386000"), new BigDecimal("90000"));
+        when(statistics.summarize(LocalDateTime.of(2026, 11, 1, 0, 0), LocalDateTime.of(2026, 12, 1, 0, 0),
+            StatisticsGroup.MOVIE)).thenReturn(List.of(new StatisticsRow("25", "Mai", figures)));
+        mvc.perform(get("/api/bookings/statistics").param("from", "2026-11-01").param("to", "2026-11-30")
+                .param("groupBy", "movie").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.groupBy").value("MOVIE"))
+            .andExpect(jsonPath("$.data.total.revenue").value(386000))
+            .andExpect(jsonPath("$.data.rows[0].key").value("25"))
+            .andExpect(jsonPath("$.data.rows[0].label").value("Mai"))
+            .andExpect(jsonPath("$.data.rows[0].figures.tickets").value(3));
+        mvc.perform(get("/api/bookings/statistics").param("from", "2026-11-01").param("to", "2026-11-01")
+                .header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.groupBy").value("DAY"));
+    }
+
+    @Test
+    void onlyAdminsSeeStatistics() throws Exception {
+        mvc.perform(get("/api/bookings/statistics").param("from", "2026-11-01").param("to", "2026-11-30")
+                .header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(statistics);
+    }
+
+    @Test
+    void invalidStatisticsRangesAre400() throws Exception {
+        for (var params : List.of(
+                Map.of("from", "2026-11-30", "to", "2026-11-01"),
+                Map.of("from", "2026-01-01", "to", "2027-01-02"),
+                Map.of("from", "2026-11-01", "to", "2026-11-30", "groupBy", "week"),
+                Map.of("from", "2026-11-01"),
+                Map.of("from", "01-11-2026", "to", "2026-11-30"))) {
+            var request = get("/api/bookings/statistics").header("X-User-Id", "1").header("X-User-Roles", "ADMIN");
+            params.forEach((name, value) -> request.param(name, value));
+            mvc.perform(request).andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/bookings/statistics").param("from", "2026-01-01").param("to", "2026-12-31")
+                .header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk());
+        verify(statistics).summarize(LocalDateTime.of(2026, 1, 1, 0, 0), LocalDateTime.of(2027, 1, 1, 0, 0),
+            StatisticsGroup.DAY);
     }
 
     @Test

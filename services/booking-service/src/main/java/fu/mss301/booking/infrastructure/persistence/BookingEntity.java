@@ -31,23 +31,29 @@ public class BookingEntity {
     @Column(name = "booking_code", nullable = false, updatable = false, length = 50)
     private String bookingCode;
 
-    @Column(name = "movie_title", updatable = false)
+    @Column(name = "movie_title")
     private String movieTitle;
 
-    @Column(name = "movie_poster_url", updatable = false, length = 500)
+    @Column(name = "movie_poster_url", length = 500)
     private String moviePosterUrl;
 
-    @Column(name = "cinema_name", updatable = false)
+    @Column(name = "cinema_name")
     private String cinemaName;
 
-    @Column(name = "screen_name", updatable = false, length = 100)
+    @Column(name = "screen_name", length = 100)
     private String screenName;
 
-    @Column(name = "start_time", updatable = false)
+    @Column(name = "start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "end_time", updatable = false)
+    @Column(name = "end_time")
     private LocalDateTime endTime;
+
+    @Column(name = "movie_id")
+    private Integer movieId;
+
+    @Column(name = "cinema_id")
+    private Integer cinemaId;
 
     @Column(name = "booking_time", nullable = false, updatable = false)
     private LocalDateTime bookingTime;

@@ -80,7 +80,8 @@ public class HoldSeatsUseCase {
     private TicketDetails ticketFor(ShowtimeSnapshot showtime) {
         MovieInfo movie = movies.getMovie(showtime.movieId());
         return new TicketDetails(movie.title(), movie.posterUrl(), cinemas.cinemaName(showtime.cinemaId()),
-            cinemas.screenName(showtime.screenId()), showtime.startTime(), showtime.endTime());
+            cinemas.screenName(showtime.screenId()), showtime.startTime(), showtime.endTime(), showtime.movieId(),
+            showtime.cinemaId());
     }
 
     private static void requireUsable(Integer seatId, Map<Integer, PhysicalSeat> layout) {
