@@ -98,8 +98,8 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
 ## API audit (2026-11-08)
 
 - Audited master at `9b58f53`; its new change only rejects malformed PayOS webhooks.
-  This commit is not merged into the FE branch/runtime yet; their BE baseline stays
-  `2d927c6`. The three additions above use APIs that already exist at that baseline.
+  This fix is now merged into the FE branch and included in the local runtime.
+  Their backend baseline is `9b58f53`. The catalogue additions use existing APIs.
 - `POST /movies/{id}/expire` is redundant with PATCH status EXPIRED and is not
   called separately. PayOS webhooks are called by PayOS, never by FE.
 - Detail GETs for genres/persons/seat-types/seats remain available for future
@@ -115,7 +115,7 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
 
 ## Running local backend (2026-11-07)
 
-- FE branch includes master through `2d927c6` (including booking search, combos,
+- FE branch includes master through `9b58f53` (including booking search, combos,
   clean booking refactor and ticket snapshots). The default branch is `master`.
 - Runtime snapshot: `.worktrees/local-runtime` under the main repository, updated
   to the same backend APIs. This directory is ignored and specific to this machine.
@@ -132,7 +132,7 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   causing `No projection handler`. The fix and a concrete-adapter discovery test
   are now committed with this branch; runtime uses the same fix. Compose JWT
   interpolation is already corrected in master.
-- Validation: 27 FE unit tests, 41 browser contract tests, production build and
+- Validation: 33 FE unit tests, 45 browser contract tests, production build and
   formatting pass; 9 focused Java OTP tests pass. Contract browser tests use mocks.
 - Live Chromium separately verified real gateway/MySQL flows without mocks:
   registration + MailHog OTP verification, password reset + OTP, admin login,
@@ -166,3 +166,18 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
 - Unit regressions cover restore races, expired cookies, transient errors and
   logout during restore. Browser contracts cover F5, payment return, multiple
   tabs, cookie visibility, failed restore and failed logout.
+- Completed verification: 33 FE unit tests, 45 mocked browser tests, production
+  build and formatting pass. Gateway/user Java suite: 126 tests pass (the
+  environment-dependent user context test is excluded from that Maven run).
+- Updated user-service and gateway were separately started with the real MySQL
+  stack. Live Chromium verified login, account reload, replay rejection for old
+  cookies, simultaneous tab reload, external navigation to payment return, and
+  logout revocation including the other tab. Report: runtime
+  `live-results/session-report.json`; no JS errors.
+- Authenticated movie-status PATCH returned 200 through the live gateway with
+  the original status preserved. Issue #18 is still open; this successful probe
+  does not establish its root cause or close the issue.
+- PayOS checkout still requires credentials. The webhook-signature fix from
+  master is integrated; no real payment or Cloudinary upload was performed.
+- Post-merge PayOS adapter tests: 4/4 pass. Live gateway rejects a webhook
+  with missing signature with HTTP 400; booking-service is healthy after rebuild.
