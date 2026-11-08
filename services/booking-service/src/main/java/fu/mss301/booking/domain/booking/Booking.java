@@ -49,13 +49,14 @@ public final class Booking {
     private final List<BookingSeat> seats;
     private final List<BookingCombo> combos;
     private final List<BookingVoucher> vouchers;
+    private final List<BookingCheckIn> checkIns;
     private final List<DomainEvent> events = new ArrayList<>();
 
     private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, TicketDetails ticket,
                     LocalDateTime bookingTime,
                     BigDecimal totalAmount, BigDecimal discountAmount, BookingStatus status, LocalDateTime expiredAt,
                     Integer version, LocalDateTime createdAt, LocalDateTime updatedAt, List<BookingSeat> seats,
-                    List<BookingCombo> combos, List<BookingVoucher> vouchers) {
+                    List<BookingCombo> combos, List<BookingVoucher> vouchers, List<BookingCheckIn> checkIns) {
         this.id = id;
         this.userId = userId;
         this.showtimeId = showtimeId;
@@ -72,6 +73,7 @@ public final class Booking {
         this.seats = new ArrayList<>(seats);
         this.combos = new ArrayList<>(combos);
         this.vouchers = new ArrayList<>(vouchers);
+        this.checkIns = new ArrayList<>(checkIns);
     }
 
     public static Booking hold(Integer userId, Long showtimeId, TicketDetails ticket, List<SeatSelection> selections,
@@ -93,7 +95,7 @@ public final class Booking {
             .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
         return new Booking(null, userId, showtimeId, BookingCode.generate(now), ticket, now, total,
             BigDecimal.ZERO.setScale(2), BookingStatus.PENDING_PAYMENT, now.plus(holdTtl), null, now, now, seats,
-            List.of(), List.of());
+            List.of(), List.of(), List.of());
     }
 
     /**
@@ -105,9 +107,10 @@ public final class Booking {
                                   TicketDetails ticket, LocalDateTime bookingTime, BigDecimal totalAmount,
                                   BigDecimal discountAmount, BookingStatus status, LocalDateTime expiredAt,
                                   Integer version, LocalDateTime createdAt, LocalDateTime updatedAt,
-                                  List<BookingSeat> seats, List<BookingCombo> combos, List<BookingVoucher> vouchers) {
+                                  List<BookingSeat> seats, List<BookingCombo> combos, List<BookingVoucher> vouchers,
+                                  List<BookingCheckIn> checkIns) {
         return new Booking(id, userId, showtimeId, bookingCode, ticket, bookingTime, totalAmount, discountAmount, status,
-            expiredAt, version, createdAt, updatedAt, seats, combos, vouchers);
+            expiredAt, version, createdAt, updatedAt, seats, combos, vouchers, checkIns);
     }
 
     /** Payment succeeded: the held seats become booked. Allowed until the hold is actually released. */
@@ -240,6 +243,43 @@ public final class Booking {
         return subtotalWith(combos).setScale(2);
     }
 
+    /**
+     * Lets people in at the cinema door. One code covers every seat; a group arriving apart is let in a few at a
+     * time with the same code.
+     *
+     * @param quantity  how many people go in now; null lets in everyone not yet in
+     * @param startTime when the showtime starts
+     */
+    public void checkIn(Integer quantity, Integer staffId, LocalDateTime startTime, CheckInWindow window,
+                        LocalDateTime now) {
+        if (status != BookingStatus.CONFIRMED) {
+            throw new InvalidStateTransitionException("Only a paid booking can be checked in, this one is " + status);
+        }
+        if (startTime == null) throw new DomainException("Showtime start is required");
+        if (!window.isOpenAt(startTime, now)) {
+            throw new InvalidStateTransitionException("Check-in for this showtime is open from "
+                + window.opensAt(startTime) + " to " + window.closesAt(startTime));
+        }
+        int remaining = remainingToAdmit();
+        if (remaining == 0) throw new AlreadyCheckedInException();
+        int admitting = quantity == null ? remaining : quantity;
+        if (admitting < 1 || admitting > remaining) {
+            throw new DomainException("Only " + remaining + (remaining == 1 ? " person" : " people")
+                + " can still be checked in with this code");
+        }
+        checkIns.add(BookingCheckIn.record(admitting, staffId, now));
+        updatedAt = now;
+    }
+
+    public int admittedCount() {
+        return checkIns.stream().mapToInt(BookingCheckIn::quantity).sum();
+    }
+
+    /** Every seat of a paid booking is one person. */
+    public int remainingToAdmit() {
+        return Math.max(0, seats.size() - admittedCount());
+    }
+
     /** A new payment may only be started while the seat hold is still valid. */
     public boolean isPayableAt(LocalDateTime now) {
         return status == BookingStatus.PENDING_PAYMENT && now.isBefore(expiredAt);
@@ -271,6 +311,7 @@ public final class Booking {
     public List<BookingSeat> seats() { return Collections.unmodifiableList(seats); }
     public List<BookingCombo> combos() { return Collections.unmodifiableList(combos); }
     public List<BookingVoucher> vouchers() { return Collections.unmodifiableList(vouchers); }
+    public List<BookingCheckIn> checkIns() { return Collections.unmodifiableList(checkIns); }
 
     /** Optimistic-lock token owned by persistence; the domain never interprets it. */
     public Integer version() { return version; }

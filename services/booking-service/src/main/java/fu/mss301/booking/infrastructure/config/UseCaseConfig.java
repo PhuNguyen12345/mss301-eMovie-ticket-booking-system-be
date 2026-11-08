@@ -2,6 +2,10 @@ package fu.mss301.booking.infrastructure.config;
 
 import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
+import fu.mss301.booking.application.booking.CheckInUseCase;
+import fu.mss301.booking.application.booking.TicketQrUseCase;
+import fu.mss301.booking.application.port.QrCodeRenderer;
+import fu.mss301.booking.domain.booking.CheckInWindow;
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
 import fu.mss301.booking.application.booking.HoldPolicy;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
@@ -143,6 +147,17 @@ public class UseCaseConfig {
     VoucherEventPolicy voucherEventPolicy(BookingRepository bookings, VoucherReservations reservations,
                                           Transactions transactions) {
         return new VoucherEventPolicy(bookings, reservations, transactions);
+    }
+
+    @Bean
+    CheckInUseCase checkInUseCase(BookingRepository bookings, ShowtimeCatalog showtimes, CheckInWindow window,
+                                  Transactions transactions, Clock clock) {
+        return new CheckInUseCase(bookings, showtimes, window, transactions, clock);
+    }
+
+    @Bean
+    TicketQrUseCase ticketQrUseCase(BookingRepository bookings, QrCodeRenderer renderer, Transactions transactions) {
+        return new TicketQrUseCase(bookings, renderer, transactions);
     }
 
     @Bean

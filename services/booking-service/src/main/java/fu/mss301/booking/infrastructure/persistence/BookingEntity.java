@@ -87,4 +87,9 @@ public class BookingEntity {
     @OrderBy("id ASC")
     @BatchSize(size = 100)
     private List<BookingVoucherEntity> vouchers = new ArrayList<>();
+
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL)
+    @OrderBy("id ASC")
+    @BatchSize(size = 100)
+    private List<BookingCheckInEntity> checkIns = new ArrayList<>();
 }

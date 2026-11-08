@@ -22,6 +22,12 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, Jp
     @Query("select b from BookingEntity b where b.id = :id")
     Optional<BookingEntity> lockById(@Param("id") Integer id);
 
+    Optional<BookingEntity> findByBookingCode(String bookingCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from BookingEntity b where b.bookingCode = :code")
+    Optional<BookingEntity> lockByBookingCode(@Param("code") String bookingCode);
+
     Page<BookingEntity> findByUserId(Integer userId, Pageable pageable);
 
     @Query("select b.id from BookingEntity b where b.status = :status and b.expiredAt <= :now order by b.expiredAt")

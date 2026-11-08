@@ -5,6 +5,7 @@ import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.exception.UpstreamServiceException;
+import fu.mss301.booking.application.exception.TicketAlreadyUsedException;
 import fu.mss301.booking.application.exception.VoucherNotFoundException;
 import fu.mss301.booking.application.payment.PaymentView;
 import fu.mss301.booking.domain.voucher.VoucherKind;
@@ -41,6 +42,8 @@ class BookingControllerTests {
     private HandlePayosWebhookUseCase webhook;
     private RefundAdminUseCase refunds;
     private ApplyVoucherUseCase vouchers;
+    private CheckInUseCase checkIn;
+    private TicketQrUseCase ticketQr;
     private MockMvc mvc;
 
     @BeforeEach
@@ -52,9 +55,11 @@ class BookingControllerTests {
         webhook = mock(HandlePayosWebhookUseCase.class);
         refunds = mock(RefundAdminUseCase.class);
         vouchers = mock(ApplyVoucherUseCase.class);
+        checkIn = mock(CheckInUseCase.class);
+        ticketQr = mock(TicketQrUseCase.class);
         mvc = MockMvcBuilders.standaloneSetup(
                 new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
-                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers),
+                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers, checkIn, ticketQr),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
@@ -65,7 +70,7 @@ class BookingControllerTests {
     void holdReturns201WithLocation() throws Exception {
         when(holdSeats.hold(7, 3L, List.of(101, 102))).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
             BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), BigDecimal.ZERO, new BigDecimal("180000.00"),
-            LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(), null));
+            LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(), 0, null));
         mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
             .andExpect(status().isCreated())
@@ -117,7 +122,7 @@ class BookingControllerTests {
         when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 2)))).thenReturn(new BookingView(11,
             "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"), BigDecimal.ZERO,
             new BigDecimal("260000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(),
-            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), List.of(), null));
+            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), List.of(), 0, null));
         mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":2}]}"))
             .andExpect(status().isOk())
@@ -133,7 +138,7 @@ class BookingControllerTests {
         when(vouchers.apply(7, 11, "emfree", 101)).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
             BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), new BigDecimal("90000.00"),
             new BigDecimal("90000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(line),
-            null));
+            0, null));
         mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"emfree\",\"seatId\":101}"))
             .andExpect(status().isOk())
@@ -174,6 +179,57 @@ class BookingControllerTests {
             .andExpect(jsonPath("$.data.status").value("NOT_REQUIRED"))
             .andExpect(jsonPath("$.data.amount").value(0))
             .andExpect(jsonPath("$.data.checkoutUrl").doesNotExist());
+    }
+
+    @Test
+    void onlyAdminsCheckIn() throws Exception {
+        mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"BK1\"}"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(checkIn);
+    }
+
+    @Test
+    void checkInPassesTheStaffCodeAndQuantity() throws Exception {
+        when(checkIn.checkIn(1, "bk1", 2)).thenReturn(checkInView(2, 1));
+        mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"bk1\",\"quantity\":2}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.admittedCount").value(2))
+            .andExpect(jsonPath("$.data.remaining").value(1));
+        for (var body : List.of("{}", "{\"bookingCode\":\" \"}", "{\"bookingCode\":\"BK1\",\"quantity\":0}")) {
+            mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void aUsedTicketIs409WithItsEarlierScans() throws Exception {
+        when(checkIn.checkIn(1, "BK1", null)).thenThrow(new TicketAlreadyUsedException(checkInView(3, 0)));
+        mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"BK1\"}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.message").value("Every seat of this booking has already been checked in"))
+            .andExpect(jsonPath("$.data.remaining").value(0))
+            .andExpect(jsonPath("$.data.checkIns[0].checkedInAt").value("2027-01-21T18:50:00"));
+    }
+
+    @Test
+    void ticketQrIsAPngImage() throws Exception {
+        when(ticketQr.png(7, false, 11)).thenReturn(new byte[] {(byte) 0x89, 'P', 'N', 'G'});
+        mvc.perform(get("/api/bookings/11/qr").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.IMAGE_PNG))
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(content().bytes(new byte[] {(byte) 0x89, 'P', 'N', 'G'}));
+    }
+
+    private static CheckInView checkInView(int admitted, int remaining) {
+        var start = LocalDateTime.of(2027, 1, 21, 19, 0);
+        return new CheckInView("BK1", BookingStatus.CONFIRMED, "Dune", "Rạp Hà Nội", "Phòng 1", start,
+            List.of(new CheckInView.Seat(101, "A", 1, "Ghế thường")), admitted + remaining, admitted, remaining,
+            List.of(new CheckInView.Scan(admitted, start.minusMinutes(10), 1)));
     }
 
     @Test

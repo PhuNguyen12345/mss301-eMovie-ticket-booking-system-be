@@ -67,7 +67,7 @@ class ReplaceBookingCombosUseCaseTests {
             Duration.ofMinutes(5));
         booking = Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
             held.totalAmount(), held.discountAmount(), held.status(), held.expiredAt(), 0, held.createdAt(), held.updatedAt(),
-            held.seats(), held.combos(), held.vouchers());
+            held.seats(), held.combos(), held.vouchers(), held.checkIns());
         when(bookings.findByIdForUpdate(42)).thenReturn(Optional.of(booking));
         when(bookings.save(any())).thenAnswer(call -> call.getArgument(0));
         when(payments.findPendingByBookingIdForUpdate(42)).thenReturn(List.of());

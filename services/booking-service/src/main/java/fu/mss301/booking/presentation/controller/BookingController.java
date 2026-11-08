@@ -6,6 +6,9 @@ import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.BookingSearch;
 import fu.mss301.booking.application.booking.BookingView;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
+import fu.mss301.booking.application.booking.CheckInUseCase;
+import fu.mss301.booking.application.booking.CheckInView;
+import fu.mss301.booking.application.booking.TicketQrUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
 import fu.mss301.booking.application.booking.SeatMapQuery;
@@ -14,6 +17,7 @@ import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
 import fu.mss301.booking.application.payment.PaymentView;
 import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.presentation.dto.ApplyVoucherRequest;
+import fu.mss301.booking.presentation.dto.CheckInRequest;
 import fu.mss301.booking.presentation.dto.HoldSeatsRequest;
 import fu.mss301.booking.presentation.dto.ReplaceCombosRequest;
 import fu.mss301.booking.presentation.security.AuthenticatedUser;
@@ -23,7 +27,9 @@ import fu.mss301.common.dto.PageResponseDTO;
 import fu.mss301.common.exception.ApiException;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -40,10 +46,13 @@ public class BookingController {
     private final InitiatePaymentUseCase initiatePayment;
     private final ReplaceBookingCombosUseCase replaceCombos;
     private final ApplyVoucherUseCase vouchers;
+    private final CheckInUseCase checkIn;
+    private final TicketQrUseCase ticketQr;
 
     public BookingController(SeatMapQuery seatMap, HoldSeatsUseCase holdSeats, BookingQueryService queries,
                              CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment,
-                             ReplaceBookingCombosUseCase replaceCombos, ApplyVoucherUseCase vouchers) {
+                             ReplaceBookingCombosUseCase replaceCombos, ApplyVoucherUseCase vouchers,
+                             CheckInUseCase checkIn, TicketQrUseCase ticketQr) {
         this.seatMap = seatMap;
         this.holdSeats = holdSeats;
         this.queries = queries;
@@ -51,6 +60,8 @@ public class BookingController {
         this.initiatePayment = initiatePayment;
         this.replaceCombos = replaceCombos;
         this.vouchers = vouchers;
+        this.checkIn = checkIn;
+        this.ticketQr = ticketQr;
     }
 
     @GetMapping
@@ -103,6 +114,21 @@ public class BookingController {
     public ApiResponse<BookingView> replaceCombos(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id,
                                                   @Valid @RequestBody ReplaceCombosRequest request) {
         return ApiResponse.success(replaceCombos.replace(user.id(), id, request.toLines()), "Booking combos updated successfully");
+    }
+
+    /** Door staff scan the customer's QR code, which holds the booking code. */
+    @PostMapping("/check-in")
+    public ApiResponse<CheckInView> checkIn(@CurrentUser AuthenticatedUser user,
+                                            @Valid @RequestBody CheckInRequest request) {
+        if (!user.isAdmin()) throw new ApiException(HttpStatus.FORBIDDEN, "Access denied");
+        return ApiResponse.success(checkIn.checkIn(user.id(), request.bookingCode(), request.quantity()),
+            "Checked in successfully");
+    }
+
+    @GetMapping(value = "/{id}/qr", produces = MediaType.IMAGE_PNG_VALUE)
+    public ResponseEntity<byte[]> ticketQr(@CurrentUser AuthenticatedUser user, @PathVariable("id") Integer id) {
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
+            .cacheControl(CacheControl.noStore()).body(ticketQr.png(user.id(), user.isAdmin(), id));
     }
 
     @PostMapping("/{id}/vouchers")

@@ -97,7 +97,7 @@ class BookingTest {
             NOW, NOW);
         Booking booking = Booking.restore(42, 7, 3L, new BookingCode("BK260101000000ABCDEF"), null, NOW,
             new BigDecimal("90000.00"), BigDecimal.ZERO, BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat),
-            List.of(), List.of());
+            List.of(), List.of(), List.of());
         assertEquals(BookingStatus.EXPIRED, booking.status());
         assertEquals(3, booking.version());
         assertEquals(5, booking.seats().getFirst().id());
@@ -131,7 +131,8 @@ class BookingTest {
         var stored = BookingCombo.restore(77, 5, "Bắp nước", 2, new BigDecimal("85000.00"));
         Booking restored = Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(),
             booking.ticket(), booking.bookingTime(), new BigDecimal("260000.00"), BigDecimal.ZERO, booking.status(),
-            booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored), List.of());
+            booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored), List.of(),
+            List.of());
         restored.replaceCombos(List.of(combo(5, 3, "95000"), combo(6, 1, "40000")), NOW);
         assertEquals(77, restored.combos().getFirst().id());
         assertEquals(3, restored.combos().getFirst().quantity());
@@ -194,6 +195,6 @@ class BookingTest {
     private static Booking persisted(Booking booking) {
         return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.ticket(), booking.bookingTime(),
             booking.totalAmount(), booking.discountAmount(), booking.status(), booking.expiredAt(), 0, booking.createdAt(),
-            booking.updatedAt(), booking.seats(), booking.combos(), booking.vouchers());
+            booking.updatedAt(), booking.seats(), booking.combos(), booking.vouchers(), booking.checkIns());
     }
 }
