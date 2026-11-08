@@ -15,16 +15,19 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     private final ScreenSchedule screens;
     private final MovieCatalog movies;
     private final CinemaCatalog cinemas;
+    private final BookingNotifier bookings;
     private final Transactions transactions;
     private final Clock clock;
 
     public ShowtimeServiceImpl(ShowtimeRepository showtimes, ShowtimeQueries queries, ScreenSchedule screens,
-            MovieCatalog movies, CinemaCatalog cinemas, Transactions transactions, Clock clock) {
+            MovieCatalog movies, CinemaCatalog cinemas, BookingNotifier bookings, Transactions transactions,
+            Clock clock) {
         this.showtimes = showtimes;
         this.queries = queries;
         this.screens = screens;
         this.movies = movies;
         this.cinemas = cinemas;
+        this.bookings = bookings;
         this.transactions = transactions;
         this.clock = clock;
     }
@@ -74,12 +77,16 @@ public class ShowtimeServiceImpl implements ShowtimeService {
     @Override
     public ShowtimeView cancelShowtime(Long id) {
         Ids.requirePositive(id, "Showtime");
-        return transactions.write(() -> {
+        var cancelled = transactions.write(() -> {
             var showtime = loadForUpdate(id);
             screens.lock(showtime.schedule().screenId());
             showtime.cancel(LocalDateTime.now(clock));
             return ShowtimeView.from(showtimes.save(showtime));
         });
+        // After the commit, so booking-service sees the showtime as cancelled. Repeating a cancellation notifies
+        // again, which booking-service handles without compensating twice.
+        bookings.showtimeCancelled(id);
+        return cancelled;
     }
 
     private Showtime loadForUpdate(Long id) {
