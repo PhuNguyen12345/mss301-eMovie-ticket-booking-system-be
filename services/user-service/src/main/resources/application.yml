@@ -68,6 +68,10 @@ logging:
     com.yourpackage.app: INFO
     org.flywaydb: INFO
 
+session:
+  cookie:
+    secure: ${SESSION_COOKIE_SECURE:true}
+
 registration:
   otp:
     mail-from: ${SMTP_FROM}

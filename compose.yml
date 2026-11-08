@@ -200,6 +200,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       JWT_ISSUER: ${JWT_ISSUER:-user-service}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-e-movie}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       SMTP_FROM: ${SMTP_FROM:-noreply@example.invalid}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}

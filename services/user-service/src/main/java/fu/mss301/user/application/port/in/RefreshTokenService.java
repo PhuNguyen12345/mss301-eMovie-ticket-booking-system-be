@@ -5,6 +5,7 @@ import fu.mss301.user.application.usecase.dto.LoginResponse.LoginUserResponse;
 public interface RefreshTokenService {
     IssuedRefreshToken issue(Integer userId);
     RotatedRefreshToken rotate(String rawToken);
+    void revoke(String rawToken);
 
     public record IssuedRefreshToken(String token, long expiresIn) {
         @Override

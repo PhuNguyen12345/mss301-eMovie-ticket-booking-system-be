@@ -24,6 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 })
 class AuthEndpointAuthorizationTests {
     private static final String[] PUBLIC_POST_PATHS = {
+        "/api/auth/logout",
         "/api/auth/register/verify",
         "/api/auth/register/resend-otp",
         "/api/auth/password/forgot",
@@ -38,6 +39,24 @@ class AuthEndpointAuthorizationTests {
         for (String path : PUBLIC_POST_PATHS) {
             client.post().uri(path).exchange().expectStatus().isOk();
         }
+    }
+
+    @Test
+    void cookieSessionPreflightAllowsOnlyConfiguredOrigins() {
+        WebTestClient client = WebTestClient.bindToApplicationContext(context).build();
+        client.options().uri("http://localhost:8080/api/auth/refresh?transport=cookie")
+            .header("Origin", "http://localhost:3000")
+            .header("Access-Control-Request-Method", "POST")
+            .header("Access-Control-Request-Headers", "content-type")
+            .exchange().expectStatus().isOk()
+            .expectHeader().valueEquals("Access-Control-Allow-Origin", "http://localhost:3000")
+            .expectHeader().valueEquals("Access-Control-Allow-Credentials", "true");
+        client.options().uri("http://localhost:8080/api/auth/logout")
+            .header("Origin", "https://untrusted.example")
+            .header("Access-Control-Request-Method", "POST")
+            .header("Access-Control-Request-Headers", "content-type")
+            .exchange().expectStatus().isForbidden()
+            .expectHeader().doesNotExist("Access-Control-Allow-Credentials");
     }
 
     @Test
@@ -63,6 +82,7 @@ class AuthEndpointAuthorizationTests {
     @RestController
     static class AuthEndpoint {
         @PostMapping({
+            "/api/auth/logout",
             "/api/auth/register/verify",
             "/api/auth/register/resend-otp",
             "/api/auth/password/forgot",
