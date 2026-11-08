@@ -172,6 +172,10 @@ Vé đã bán là bản sao cố định. `HoldSeatsUseCase` đọc phim, rạp,
 
 `StatisticsQuery` đọc qua port `BookingStatistics`, adapter `JdbcBookingStatistics` chạy một câu SQL tổng hợp, không load aggregate. Câu trong tính từng booking bằng subquery riêng cho ghế, combo và payment, nên booking nhiều ghế, nhiều combo không bị nhân tiền như khi join. Câu ngoài nhóm theo ngày, tháng, phim hoặc rạp. Dòng tổng được cộng trong Java.
 
+## Lịch sử giao dịch
+
+`PaymentHistoryQuery` kiểm tra tham số rồi đọc qua port `PaymentQueries`, giống `BookingQueries`. Adapter `JpaPaymentQueries` lọc `PaymentEntity` bằng `Specification`, sắp `created_at DESC, id DESC`, rồi lấy mã booking và user của cả trang bằng một query. Không có gì ở đây sửa payment.
+
 ## Logging
 
 `application` dùng `java.lang.System.Logger` để không phụ thuộc thư viện ngoài. Log đi qua JUL tới Logback nên vẫn có cùng định dạng.

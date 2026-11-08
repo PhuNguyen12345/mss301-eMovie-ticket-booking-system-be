@@ -28,6 +28,7 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS. Đơn 0đ được xác nhận luôn | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
+| GET | `/api/payments?status=&from=&to=&bookingId=&orderCode=&page=0&size=20` | ADMIN | Lịch sử mọi giao dịch, kể cả giao dịch đã hoàn (mới nhất trước) | 200 |
 | GET | `/api/payments/refunds?status=PENDING` | ADMIN | Danh sách yêu cầu hoàn tiền | 200 |
 | POST | `/api/payments/refunds/{id}/complete` | ADMIN | Đánh dấu đã hoàn tiền thủ công | 200 |
 | GET | `/api/combos` | Public | Combo đang bán | 200 |
@@ -519,7 +520,7 @@ Doanh thu tính theo **ngày chiếu** trên vé, giờ `Asia/Ho_Chi_Minh`, khô
 | `refundedAmount` | Tổng payment `REFUNDED` của mọi booking trong nhóm, chỉ để tham khảo |
 
 - **Chỉ tính booking `CONFIRMED`.** Booking `PENDING_PAYMENT`, `CANCELLED`, `EXPIRED`, `SHOWTIME_CANCELLED` không vào doanh thu.
-- **Payment `REFUNDED` không vào doanh thu.** Đó là tiền về trễ hoặc tiền của suất bị hủy, đã trả lại khách bằng voucher. Payment và dòng `refunds` vẫn được giữ, chỉ hiện ở cột `refundedAmount`.
+- **Payment `REFUNDED` không vào doanh thu.** Đó là tiền về trễ hoặc tiền của suất bị hủy, đã trả lại khách bằng voucher. Payment và dòng `refunds` vẫn được giữ, chỉ hiện ở cột `refundedAmount`, và xem từng giao dịch ở mục 2.14.
 - **Voucher tách khỏi doanh thu.** Với mỗi nhóm, `ticketAmount + comboAmount − discountAmount = revenue`. Voucher giá trị là tiền khách đã trả từ trước, nên tính lại sẽ bị đếm 2 lần.
 - **Thứ tự dòng:** `day` và `month` theo ngày tăng dần. `movie` và `cinema` theo doanh thu giảm dần.
 - **Nhóm rỗng:** chỉ trả nhóm có booking hoặc có tiền hoàn. Không có dữ liệu thì `rows` rỗng và `total` bằng 0.
@@ -527,6 +528,42 @@ Doanh thu tính theo **ngày chiếu** trên vé, giờ `Asia/Ho_Chi_Minh`, khô
 - **Booking cũ:** job bảo trì điền thông tin vé cho booking tạo trước khi vé được lưu, và mã phim, mã rạp cho booking trước `V9`. Job chạy 1 phút sau khi service khởi động, rồi mỗi 5 phút. Vé đã có thông tin thì giữ nguyên, chỉ thêm mã.
 
 Lỗi: khách gọi nhận 403. Thiếu `from` hoặc `to`, `from` sau `to`, quá 366 ngày, sai định dạng ngày hoặc `groupBy` lạ thì nhận 400.
+
+### 2.14 Lịch sử giao dịch (ADMIN)
+
+`GET /api/payments?status=REFUNDED&from=2026-11-01&to=2026-11-30&page=0&size=20`
+
+| Tham số | Ý nghĩa |
+| --- | --- |
+| `status` | `PENDING`, `SUCCESS`, `FAILED` hoặc `REFUNDED`. Không truyền thì lấy tất cả |
+| `from`, `to` | Ngày **tạo** giao dịch, `yyyy-MM-dd`, tính cả hai ngày, giờ `Asia/Ho_Chi_Minh`. Có thể truyền một trong hai |
+| `bookingId` | Mọi lần thanh toán của một booking |
+| `orderCode` | Mã đơn PayOS, khi khách đọc mã trên trang PayOS hoặc sao kê |
+| `page`, `size` | `size` từ 1 đến 100, mặc định 20 |
+
+Lọc theo ngày tạo vì payment `PENDING` và `FAILED` không có ngày thanh toán. Ngày thanh toán nằm ở `paidAt`. Danh sách mới nhất trước.
+
+```json
+{
+  "data": [{
+    "id": 51, "bookingId": 120, "bookingCode": "BK261108100000ABCDEF", "userId": 7, "orderCode": 1762591234567,
+    "provider": "PAYOS", "amount": 386000.00, "status": "REFUNDED", "providerTransactionId": "FT25312...",
+    "paidAt": "2026-11-08T10:01:00", "createdAt": "2026-11-08T10:00:00",
+    "refunds": [
+      {"id": 9, "amount": 170000.00, "method": "VOUCHER", "voucherId": 88, "status": "COMPLETED",
+       "reason": "Showtime cancelled", "createdAt": "...", "refundedAt": "..."},
+      {"id": 10, "amount": 216000.00, "method": "VOUCHER", "voucherId": 89, "status": "COMPLETED", "...": "..."}
+    ]
+  }],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "first": true, "last": true
+}
+```
+
+- **Không xóa:** payment và refund không bao giờ bị xóa. Payment `REFUNDED` vẫn hiện ở đây, kèm từng dòng refund: `VOUCHER` là trả bằng voucher (`voucherId`), `MANUAL` là chuyển khoản tay.
+- **Đối soát:** `providerTransactionId` là mã giao dịch ngân hàng PayOS trả về khi tiền đã vào. `bookingCode` là mã in trên vé.
+- **Không trả link thanh toán:** `checkoutUrl` chỉ dành cho khách.
+
+Lỗi: khách gọi nhận 403. `from` sau `to`, `size` ngoài 1–100, `page` âm, `status` lạ hoặc ngày sai định dạng thì nhận 400.
 
 ## 3. State machine
 
@@ -738,6 +775,6 @@ và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 
 `vouchers.usage_limit` theo ERD được giữ lại nhưng không dùng, vì mỗi mã chỉ dùng một lần. `uq_user_vouchers_voucher` đảm bảo mỗi mã có tối đa một chủ.
 
-`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin. `idx_bookings_status_start` phục vụ thống kê theo ngày chiếu.
+`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin. `idx_bookings_status_start` phục vụ thống kê theo ngày chiếu. `idx_payment_transactions_created` phục vụ lịch sử giao dịch.
 
 `payment_transactions.provider_transaction_id` giữ đúng nghĩa ERD: mã giao dịch ngân hàng (`reference`) PayOS trả về khi thanh toán thành công.
