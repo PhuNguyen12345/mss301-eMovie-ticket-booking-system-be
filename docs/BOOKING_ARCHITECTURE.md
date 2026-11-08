@@ -9,7 +9,8 @@ API, schema và luồng nghiệp vụ xem ở [BOOKING_API.md](BOOKING_API.md).
 ```text
 fu.mss301.booking
   domain/
-    booking/         Booking, BookingSeat, BookingCombo, BookingCode, BookingRepository, event/
+    booking/         Booking, BookingSeat, BookingCombo, BookingVoucher, VoucherPricing, BookingCode,
+                     BookingRepository, event/
     combo/           Combo, ComboRepository
     voucher/         Voucher, VoucherClaim, VoucherTerms, VoucherCode, VoucherRepository
     payment/         PaymentTransaction, Refund, PaymentRepository, event/
@@ -17,7 +18,7 @@ fu.mss301.booking
   application/
     booking/         Use case và view của booking
     combo/           Danh mục combo
-    voucher/         Quản lý và nhận voucher
+    voucher/         Quản lý, nhận voucher và VoucherReservations
     payment/         Use case và view của thanh toán, hoàn tiền
     policy/          Phản ứng với domain event
     port/            Transactions, DomainEvents, BookingQueries, ShowtimeCatalog,
@@ -91,6 +92,28 @@ Repository adapter yêu cầu có transaction (`MANDATORY`) vì mapper phải đ
 `Voucher` là aggregate riêng, mỗi dòng là một mã. `VoucherClaim` là con của nó, tương ứng dòng `user_vouchers`, cho biết mã thuộc về ai. Mọi thay đổi đều khóa dòng `vouchers`, nên hai người nhận cùng một mã thì người sau đọc được mã đã có chủ. `uq_user_vouchers_voucher` là lớp chặn cuối ở DB.
 
 `VoucherTerms` gom các điều kiện của voucher và tự kiểm tra lúc tạo. `claim` trả cùng một lỗi cho mọi trường hợp không dùng được, để không ai dò được mã thật.
+
+### Áp voucher vào booking
+
+`Voucher` và `Booking` là 2 aggregate, nên `ApplyVoucherUseCase` đổi chúng ở 2 transaction:
+
+1. Khóa dòng voucher, `reserveFor(userId, bookingId)`, nhận lại `VoucherOffer` là bản sao điều kiện.
+2. Khóa dòng booking, `applyVoucher(offer, seatId)`. Booking lưu bản sao vào `BookingVoucher`, nên tính tiền không đọc lại `Voucher`.
+3. Bước 2 lỗi thì `VoucherReservations.settle` trả voucher, rồi ném lỗi gốc.
+
+Toàn bộ quy tắc tính tiền nằm ở `VoucherPricing`, dùng chung cho áp mã, gỡ mã, đổi combo và gỡ mã hết hạn. Chế độ `strict` từ chối cả lần áp nếu một voucher không còn hợp lệ. Chế độ còn lại bỏ voucher đó và `Booking` phát `BookingVoucherRemoved`.
+
+`VoucherReservations.settle(voucherId, bookingId)` đưa voucher về đúng trạng thái theo booking, chạy bao nhiêu lần cũng được:
+
+| Booking | Voucher |
+| --- | --- |
+| `CONFIRMED` và còn voucher | `USED` |
+| `PENDING_PAYMENT` và còn voucher | Giữ nguyên |
+| Trường hợp khác | `AVAILABLE` nếu đúng booking này đang giữ |
+
+`VoucherEventPolicy` gọi hàm này sau các event `BookingConfirmed`, `BookingExpired`, `BookingCancelled`, `BookingVoucherRemoved`. Job bảo trì gọi lại với voucher `RESERVED` lâu hơn `BOOKING_HOLD_TTL`, để event bị mất hoặc service dừng giữa 2 bước không làm kẹt voucher.
+
+Đơn 0đ được `InitiatePaymentUseCase` xác nhận trong transaction chỉ ghi booking, không tạo `PaymentTransaction`.
 
 ## Combo
 
