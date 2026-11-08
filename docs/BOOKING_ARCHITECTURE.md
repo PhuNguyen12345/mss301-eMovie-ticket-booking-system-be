@@ -164,8 +164,13 @@ Vé đã bán là bản sao cố định. `HoldSeatsUseCase` đọc phim, rạp,
 
 - Đường đọc không gọi upstream. Không thêm lời gọi Feign vào `BookingQueryService`, vì `GET /api/bookings/me` và việc xem vé khi service khác lỗi đều dựa vào điều này.
 - Kiểm tra ghế trước khi đọc thông tin vé, để request không hợp lệ không tốn thêm lời gọi.
-- `Booking.ticket()` có thể `null` với booking cũ, còn booking mới luôn có.
+- `Booking.ticket()` có thể `null` với booking cũ, còn booking mới luôn có. Vé lưu cả mã phim và mã rạp để thống kê.
+- `TicketBackfillService` điền vé cho booking cũ, chạy trong job bảo trì. Nó đọc showtime, phim, rạp ngoài transaction, cache theo suất trong một lượt, rồi gọi `Booking.completeTicket` cho từng booking trong transaction riêng. `completeTicket` chỉ thêm mã vào vé đã có, không sửa tên hay giờ chiếu in trên vé. Booking lỗi được bỏ qua, lượt sau thử lại.
 - Khi suất chiếu đổi giờ, vé không tự cập nhật. Khách xử lý theo nghiệp vụ ở issue #20.
+
+## Thống kê
+
+`StatisticsQuery` đọc qua port `BookingStatistics`, adapter `JdbcBookingStatistics` chạy một câu SQL tổng hợp, không load aggregate. Câu trong tính từng booking bằng subquery riêng cho ghế, combo và payment, nên booking nhiều ghế, nhiều combo không bị nhân tiền như khi join. Câu ngoài nhóm theo ngày, tháng, phim hoặc rạp. Dòng tổng được cộng trong Java.
 
 ## Logging
 

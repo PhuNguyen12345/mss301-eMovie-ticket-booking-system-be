@@ -24,6 +24,7 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | GET | `/api/bookings/{id}/qr` | Chủ booking / ADMIN | Ảnh PNG mã QR của vé đã thanh toán | 200 |
 | POST | `/api/bookings/check-in` | ADMIN | Soát vé tại rạp bằng mã đặt vé | 200 |
 | POST | `/api/bookings/showtimes/{showtimeId}/cancellation` | ADMIN | Xử lý booking của suất chiếu đã hủy | 200 |
+| GET | `/api/bookings/statistics?from=&to=&groupBy=day` | ADMIN | Doanh thu và vé bán theo ngày chiếu, tháng, phim hoặc rạp | 200 |
 | POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS. Đơn 0đ được xác nhận luôn | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
@@ -484,6 +485,49 @@ Khi admin hủy suất chiếu (`POST /api/showtimes/{id}/cancel`), showtime-ser
 
 Suất chưa bị hủy trả 409. Showtime-service gọi booking-service ở luồng nền, nên API hủy suất không chờ xử lý booking. Nếu lời gọi lỗi, ví dụ booking-service đang tắt, suất vẫn được hủy, showtime-service chỉ ghi log `WARN` và admin chạy lại bằng API trên. Hủy lại một suất đã hủy cũng gọi lại booking-service. Job bảo trì bù tiếp những booking đã chuyển `SHOWTIME_CANCELLED` nhưng chưa bù xong.
 
+### 2.13 Thống kê doanh thu (ADMIN)
+
+`GET /api/bookings/statistics?from=2026-11-01&to=2026-11-30&groupBy=movie`
+
+| Tham số | Bắt buộc | Ý nghĩa |
+| --- | --- | --- |
+| `from`, `to` | Có | Ngày chiếu đầu và cuối, `yyyy-MM-dd`, tính cả hai ngày. Tối đa 366 ngày |
+| `groupBy` | Không | `day` (mặc định), `month`, `movie` hoặc `cinema`, không phân biệt hoa thường |
+
+Doanh thu tính theo **ngày chiếu** trên vé, giờ `Asia/Ho_Chi_Minh`, không theo ngày thanh toán. Vé bán trước cho suất tương lai nằm ở ngày chiếu đó.
+
+```json
+{
+  "from": "2026-11-01", "to": "2026-11-30", "groupBy": "MOVIE",
+  "total": {"bookings": 3, "tickets": 4, "ticketAmount": 420000.00, "comboAmount": 170000.00,
+            "discountAmount": 74000.00, "revenue": 516000.00, "refundedAmount": 220000.00},
+  "rows": [
+    {"key": "25", "label": "Mai", "figures": {"bookings": 2, "tickets": 3, "ticketAmount": 330000.00, "comboAmount": 170000.00,
+                                              "discountAmount": 114000.00, "revenue": 386000.00, "refundedAmount": 90000.00}}
+  ]
+}
+```
+
+| Cột | Cách tính |
+| --- | --- |
+| `bookings` | Số booking `CONFIRMED`, kể cả booking đã check-in |
+| `tickets` | Số ghế `BOOKED` của các booking đó |
+| `ticketAmount` | Tổng giá ghế, trước giảm giá |
+| `comboAmount` | Tổng số lượng × đơn giá combo, trước giảm giá |
+| `discountAmount` | Tổng tiền voucher đã trừ, gồm cả voucher giá trị |
+| `revenue` | Tổng payment `SUCCESS`. Đơn 0đ có doanh thu 0 |
+| `refundedAmount` | Tổng payment `REFUNDED` của mọi booking trong nhóm, chỉ để tham khảo |
+
+- **Chỉ tính booking `CONFIRMED`.** Booking `PENDING_PAYMENT`, `CANCELLED`, `EXPIRED`, `SHOWTIME_CANCELLED` không vào doanh thu.
+- **Payment `REFUNDED` không vào doanh thu.** Đó là tiền về trễ hoặc tiền của suất bị hủy, đã trả lại khách bằng voucher. Payment và dòng `refunds` vẫn được giữ, chỉ hiện ở cột `refundedAmount`.
+- **Voucher tách khỏi doanh thu.** Với mỗi nhóm, `ticketAmount + comboAmount − discountAmount = revenue`. Voucher giá trị là tiền khách đã trả từ trước, nên tính lại sẽ bị đếm 2 lần.
+- **Thứ tự dòng:** `day` và `month` theo ngày tăng dần. `movie` và `cinema` theo doanh thu giảm dần.
+- **Nhóm rỗng:** chỉ trả nhóm có booking hoặc có tiền hoàn. Không có dữ liệu thì `rows` rỗng và `total` bằng 0.
+- **Nhãn:** `key` là `2026-11-08` theo ngày, `2026-11` theo tháng, mã phim hoặc mã rạp theo phim và rạp. `label` của phim và rạp là tên in trên vé. Booking chưa có mã phim hoặc mã rạp gom vào dòng `key: null`, `label: "Không rõ"`.
+- **Booking cũ:** job bảo trì điền thông tin vé cho booking tạo trước khi vé được lưu, và mã phim, mã rạp cho booking trước `V9`. Job chạy 1 phút sau khi service khởi động, rồi mỗi 5 phút. Vé đã có thông tin thì giữ nguyên, chỉ thêm mã.
+
+Lỗi: khách gọi nhận 403. Thiếu `from` hoặc `to`, `from` sau `to`, quá 366 ngày, sai định dạng ngày hoặc `groupBy` lạ thì nhận 400.
+
 ## 3. State machine
 
 ```mermaid
@@ -585,6 +629,7 @@ khách nhận voucher giá trị bằng số tiền đó và payment chuyển `R
 | `BOOKING_CHECK_IN_OPENS_BEFORE` | `PT15M` | Mở check-in bao lâu trước giờ chiếu |
 | `BOOKING_CHECK_IN_CLOSES_AFTER` | `PT20M` | Còn check-in được bao lâu sau giờ chiếu |
 | `BOOKING_SHOWTIME_CANCEL_NOTICE` | `PT2H` | Hủy suất gần giờ chiếu hơn mốc này thì khách được tặng thêm voucher |
+| `booking.ticket-backfill-interval` | `PT5M` | Chu kỳ job điền thông tin vé cho booking cũ |
 | `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
 | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
@@ -682,6 +727,7 @@ và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 | `vouchers.version` | Optimistic locking (`@Version`) |
 | `user_vouchers.booking_id` | Booking đang giữ hoặc đã dùng voucher |
 | `bookings.showtime_cancelled_at`, `compensated_at` | Thời điểm rạp hủy suất, thời điểm bù xong cho khách |
+| `bookings.movie_id`, `cinema_id` | Mã phim và mã rạp trên vé, để thống kê không gom nhầm 2 phim trùng tên. Booking cũ được job điền lại |
 | `vouchers.source_reason` | Lý do hệ thống phát voucher cho booking. `UNIQUE (source_booking_id, source_reason)` để không phát trùng |
 | Bảng `booking_check_ins` | Mỗi lần quét: số người vào, nhân viên quét, thời điểm. Chỉ thêm, không sửa |
 | `vouchers.source_payment_id`, `source_booking_id` | Nguồn của voucher giá trị, `UNIQUE` để không phát trùng |
@@ -692,6 +738,6 @@ và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 
 `vouchers.usage_limit` theo ERD được giữ lại nhưng không dùng, vì mỗi mã chỉ dùng một lần. `uq_user_vouchers_voucher` đảm bảo mỗi mã có tối đa một chủ.
 
-`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
+`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin. `idx_bookings_status_start` phục vụ thống kê theo ngày chiếu.
 
 `payment_transactions.provider_transaction_id` giữ đúng nghĩa ERD: mã giao dịch ngân hàng (`reference`) PayOS trả về khi thanh toán thành công.
