@@ -63,6 +63,8 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.GET, "/api/bookings/showtimes/*/seats").permitAll()
                 // Listing every booking is for admins; customers still use POST here and everything under this path.
                 .pathMatchers(HttpMethod.GET, "/api/bookings").hasRole("ADMIN")
+                // Door staff scan tickets; until a staff role exists this is for admins.
+                .pathMatchers(HttpMethod.POST, "/api/bookings/check-in").hasRole("ADMIN")
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
                 .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
                 .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
