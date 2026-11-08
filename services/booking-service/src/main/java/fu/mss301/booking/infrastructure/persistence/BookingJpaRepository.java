@@ -28,6 +28,16 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, Jp
     @Query("select b from BookingEntity b where b.bookingCode = :code")
     Optional<BookingEntity> lockByBookingCode(@Param("code") String bookingCode);
 
+    @Query("select b.id from BookingEntity b where b.showtimeId = :showtimeId and b.status in :statuses order by b.id")
+    List<Integer> findIdsByShowtimeAndStatusIn(@Param("showtimeId") Long showtimeId,
+                                               @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+        select b.id from BookingEntity b where b.status = :status and b.compensatedAt is null
+        order by b.showtimeCancelledAt
+        """)
+    List<Integer> findIdsByStatusNotCompensated(@Param("status") BookingStatus status, Pageable limit);
+
     Page<BookingEntity> findByUserId(Integer userId, Pageable pageable);
 
     @Query("select b.id from BookingEntity b where b.status = :status and b.expiredAt <= :now order by b.expiredAt")

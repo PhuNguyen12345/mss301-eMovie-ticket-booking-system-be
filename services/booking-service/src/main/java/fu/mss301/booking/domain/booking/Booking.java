@@ -3,6 +3,7 @@ package fu.mss301.booking.domain.booking;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
+import fu.mss301.booking.domain.booking.event.BookingShowtimeCancelled;
 import fu.mss301.booking.domain.booking.event.BookingVoucherRemoved;
 import fu.mss301.booking.domain.shared.DomainEvent;
 import fu.mss301.booking.domain.shared.DomainException;
@@ -50,13 +51,18 @@ public final class Booking {
     private final List<BookingCombo> combos;
     private final List<BookingVoucher> vouchers;
     private final List<BookingCheckIn> checkIns;
+    /** When the cinema cancelled the showtime of this paid booking, or null. */
+    private LocalDateTime showtimeCancelledAt;
+    /** When the customer was compensated for that, or null. */
+    private LocalDateTime compensatedAt;
     private final List<DomainEvent> events = new ArrayList<>();
 
     private Booking(Integer id, Integer userId, Long showtimeId, BookingCode bookingCode, TicketDetails ticket,
                     LocalDateTime bookingTime,
                     BigDecimal totalAmount, BigDecimal discountAmount, BookingStatus status, LocalDateTime expiredAt,
                     Integer version, LocalDateTime createdAt, LocalDateTime updatedAt, List<BookingSeat> seats,
-                    List<BookingCombo> combos, List<BookingVoucher> vouchers, List<BookingCheckIn> checkIns) {
+                    List<BookingCombo> combos, List<BookingVoucher> vouchers, List<BookingCheckIn> checkIns,
+                    LocalDateTime showtimeCancelledAt, LocalDateTime compensatedAt) {
         this.id = id;
         this.userId = userId;
         this.showtimeId = showtimeId;
@@ -74,6 +80,8 @@ public final class Booking {
         this.combos = new ArrayList<>(combos);
         this.vouchers = new ArrayList<>(vouchers);
         this.checkIns = new ArrayList<>(checkIns);
+        this.showtimeCancelledAt = showtimeCancelledAt;
+        this.compensatedAt = compensatedAt;
     }
 
     public static Booking hold(Integer userId, Long showtimeId, TicketDetails ticket, List<SeatSelection> selections,
@@ -95,7 +103,7 @@ public final class Booking {
             .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(2);
         return new Booking(null, userId, showtimeId, BookingCode.generate(now), ticket, now, total,
             BigDecimal.ZERO.setScale(2), BookingStatus.PENDING_PAYMENT, now.plus(holdTtl), null, now, now, seats,
-            List.of(), List.of(), List.of());
+            List.of(), List.of(), List.of(), null, null);
     }
 
     /**
@@ -108,9 +116,11 @@ public final class Booking {
                                   BigDecimal discountAmount, BookingStatus status, LocalDateTime expiredAt,
                                   Integer version, LocalDateTime createdAt, LocalDateTime updatedAt,
                                   List<BookingSeat> seats, List<BookingCombo> combos, List<BookingVoucher> vouchers,
-                                  List<BookingCheckIn> checkIns) {
+                                  List<BookingCheckIn> checkIns, LocalDateTime showtimeCancelledAt,
+                                  LocalDateTime compensatedAt) {
         return new Booking(id, userId, showtimeId, bookingCode, ticket, bookingTime, totalAmount, discountAmount, status,
-            expiredAt, version, createdAt, updatedAt, seats, combos, vouchers, checkIns);
+            expiredAt, version, createdAt, updatedAt, seats, combos, vouchers, checkIns, showtimeCancelledAt,
+            compensatedAt);
     }
 
     /** Payment succeeded: the held seats become booked. Allowed until the hold is actually released. */
@@ -136,6 +146,47 @@ public final class Booking {
         status = BookingStatus.EXPIRED;
         releaseSeats(now);
         events.add(new BookingExpired(id));
+    }
+
+    /**
+     * The cinema cancelled this booking's showtime. A booking waiting for payment is cancelled like the customer
+     * would; a paid one frees its seats and is owed compensation. Any other booking is left as it is, so the same
+     * cancellation can be handled again.
+     *
+     * @return true when the booking changed
+     */
+    public boolean cancelForShowtime(LocalDateTime now) {
+        if (status == BookingStatus.PENDING_PAYMENT) {
+            status = BookingStatus.CANCELLED;
+            releaseSeats(now);
+            events.add(new BookingCancelled(id));
+            return true;
+        }
+        if (status != BookingStatus.CONFIRMED) return false;
+        status = BookingStatus.SHOWTIME_CANCELLED;
+        showtimeCancelledAt = now;
+        releaseSeats(now);
+        events.add(new BookingShowtimeCancelled(id));
+        return true;
+    }
+
+    /** Short notice, or the showtime had already started, earns the customer an apology on top of the refund. */
+    public boolean wasCancelledAtShortNotice(LocalDateTime startTime, Duration notice) {
+        if (status != BookingStatus.SHOWTIME_CANCELLED) {
+            throw new InvalidStateTransitionException("The showtime of this booking was not cancelled");
+        }
+        return showtimeCancelledAt.isAfter(startTime.minus(notice));
+    }
+
+    /** @return true when this is the first time */
+    public boolean markCompensated(LocalDateTime now) {
+        if (status != BookingStatus.SHOWTIME_CANCELLED) {
+            throw new InvalidStateTransitionException("Only a booking whose showtime was cancelled is compensated");
+        }
+        if (compensatedAt != null) return false;
+        compensatedAt = now;
+        updatedAt = now;
+        return true;
     }
 
     /**
@@ -312,6 +363,8 @@ public final class Booking {
     public List<BookingCombo> combos() { return Collections.unmodifiableList(combos); }
     public List<BookingVoucher> vouchers() { return Collections.unmodifiableList(vouchers); }
     public List<BookingCheckIn> checkIns() { return Collections.unmodifiableList(checkIns); }
+    public LocalDateTime showtimeCancelledAt() { return showtimeCancelledAt; }
+    public LocalDateTime compensatedAt() { return compensatedAt; }
 
     /** Optimistic-lock token owned by persistence; the domain never interprets it. */
     public Integer version() { return version; }

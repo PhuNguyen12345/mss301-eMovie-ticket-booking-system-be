@@ -334,6 +334,6 @@ class BookingVoucherTest {
         return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.ticket(),
             booking.bookingTime(), booking.totalAmount(), booking.discountAmount(), booking.status(), booking.expiredAt(), 0,
             booking.createdAt(), booking.updatedAt(), booking.seats(), booking.combos(), booking.vouchers(),
-            booking.checkIns());
+            booking.checkIns(), booking.showtimeCancelledAt(), booking.compensatedAt());
     }
 }

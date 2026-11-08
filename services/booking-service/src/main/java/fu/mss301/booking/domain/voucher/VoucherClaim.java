@@ -51,6 +51,7 @@ public final class VoucherClaim {
     void release(LocalDateTime now) {
         status = ClaimStatus.AVAILABLE;
         bookingId = null;
+        usedAt = null;
         updatedAt = now;
     }
 

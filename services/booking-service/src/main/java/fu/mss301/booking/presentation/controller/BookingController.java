@@ -8,6 +8,8 @@ import fu.mss301.booking.application.booking.BookingView;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.CheckInUseCase;
 import fu.mss301.booking.application.booking.CheckInView;
+import fu.mss301.booking.application.booking.ShowtimeCancellationUseCase;
+import fu.mss301.booking.application.booking.ShowtimeCancellationView;
 import fu.mss301.booking.application.booking.TicketQrUseCase;
 import fu.mss301.booking.application.booking.HoldSeatsUseCase;
 import fu.mss301.booking.application.booking.ReplaceBookingCombosUseCase;
@@ -48,11 +50,13 @@ public class BookingController {
     private final ApplyVoucherUseCase vouchers;
     private final CheckInUseCase checkIn;
     private final TicketQrUseCase ticketQr;
+    private final ShowtimeCancellationUseCase showtimeCancellation;
 
     public BookingController(SeatMapQuery seatMap, HoldSeatsUseCase holdSeats, BookingQueryService queries,
                              CancelBookingUseCase cancelBooking, InitiatePaymentUseCase initiatePayment,
                              ReplaceBookingCombosUseCase replaceCombos, ApplyVoucherUseCase vouchers,
-                             CheckInUseCase checkIn, TicketQrUseCase ticketQr) {
+                             CheckInUseCase checkIn, TicketQrUseCase ticketQr,
+                             ShowtimeCancellationUseCase showtimeCancellation) {
         this.seatMap = seatMap;
         this.holdSeats = holdSeats;
         this.queries = queries;
@@ -62,6 +66,7 @@ public class BookingController {
         this.vouchers = vouchers;
         this.checkIn = checkIn;
         this.ticketQr = ticketQr;
+        this.showtimeCancellation = showtimeCancellation;
     }
 
     @GetMapping
@@ -83,6 +88,14 @@ public class BookingController {
     @GetMapping("/showtimes/{showtimeId}/seats")
     public ApiResponse<SeatMapView> getSeatMap(@PathVariable("showtimeId") Long showtimeId) {
         return ApiResponse.success(seatMap.seatMap(showtimeId), "Seat map retrieved successfully");
+    }
+
+    /** Runs again what showtime-service triggers after cancelling a showtime, for when that call failed. */
+    @PostMapping("/showtimes/{showtimeId}/cancellation")
+    public ApiResponse<ShowtimeCancellationView> showtimeCancelled(@CurrentUser AuthenticatedUser user,
+                                                                   @PathVariable("showtimeId") Long showtimeId) {
+        if (!user.isAdmin()) throw new ApiException(HttpStatus.FORBIDDEN, "Access denied");
+        return ApiResponse.success(showtimeCancellation.handle(showtimeId), "Bookings of the cancelled showtime handled");
     }
 
     @PostMapping

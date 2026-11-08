@@ -121,11 +121,26 @@ public final class PaymentTransaction {
      */
     public boolean compensateWithVoucher(Integer voucherId, String reason, LocalDateTime now) {
         if (voucherId == null) throw new DomainException("Voucher id is required");
+        return compensateWithVouchers(List.of(new VoucherShare(voucherId, amount)), reason, now);
+    }
+
+    /**
+     * Gives the whole payment back split over several vouchers, one refund each. The shares must add up to the
+     * amount paid. Idempotent like {@link #compensateWithVoucher}.
+     *
+     * @return true when the payment changed
+     */
+    public boolean compensateWithVouchers(List<VoucherShare> shares, String reason, LocalDateTime now) {
+        if (shares == null || shares.isEmpty()) throw new DomainException("At least one voucher is required");
         if (refunds.stream().anyMatch(Refund::isOpenOrDone)) return false;
         if (status != PaymentStatus.SUCCESS) {
             throw new InvalidStateTransitionException("Only a successful payment can be given back");
         }
-        refunds.add(Refund.byVoucher(amount, reason, voucherId, now));
+        BigDecimal total = shares.stream().map(VoucherShare::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (total.compareTo(amount) != 0) {
+            throw new DomainException("Vouchers worth " + total + " do not match the payment of " + amount);
+        }
+        shares.forEach(share -> refunds.add(Refund.byVoucher(share.amount().setScale(2), reason, share.voucherId(), now)));
         this.status = PaymentStatus.REFUNDED;
         this.updatedAt = now;
         return true;

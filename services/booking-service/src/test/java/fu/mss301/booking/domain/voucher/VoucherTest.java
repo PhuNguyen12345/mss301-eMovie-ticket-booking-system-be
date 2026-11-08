@@ -214,6 +214,37 @@ class VoucherTest {
     }
 
     @Test
+    void aCancelledShowtimeGivesBackAVoucherItsBookingHeldOrUsed() {
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        voucher.reserveFor(7, 42, NOW);
+        voucher.markUsedBy(42, NOW);
+        assertFalse(voucher.giveBackFrom(43, NOW));
+        assertTrue(voucher.giveBackFrom(42, NOW.plusHours(1)));
+        assertEquals(ClaimStatus.AVAILABLE, voucher.claim().status());
+        assertNull(voucher.claim().bookingId());
+        assertNull(voucher.claim().usedAt());
+        assertFalse(voucher.giveBackFrom(42, NOW));
+        voucher.reserveFor(7, 44, NOW);
+        assertTrue(voucher.giveBackFrom(44, NOW));
+    }
+
+    @Test
+    void theSystemIssuesVouchersForABookingWithTheirReason() {
+        var terms = new VoucherTerms(VoucherKind.TICKET_EXCHANGE, null, null, START, END, null, null, null);
+        var voucher = Voucher.forBooking(VoucherCode.of("EMSORRY1"), 7, terms, 42, VoucherSourceReason.APOLOGY_TICKET, NOW);
+        assertEquals(42, voucher.sourceBookingId());
+        assertEquals(VoucherSourceReason.APOLOGY_TICKET, voucher.sourceReason());
+        assertEquals(7, voucher.claim().userId());
+        assertEquals(VoucherSourceReason.REMAINDER, Voucher.forRemainder(VoucherCode.of("EMREST09"), 7,
+            new BigDecimal("1000"), 42, END, NOW).sourceReason());
+        assertThrows(DomainException.class,
+            () -> Voucher.forBooking(VoucherCode.of("EMSORRY2"), 7, terms, 42, null, NOW));
+        assertThrows(DomainException.class,
+            () -> Voucher.forBooking(VoucherCode.of("EMSORRY3"), 7, terms, null, VoucherSourceReason.APOLOGY_TICKET, NOW));
+    }
+
+    @Test
     void codesAreCaseInsensitiveAndGeneratedOnesAreValid() {
         assertEquals("TET-2027", VoucherCode.of("  tet-2027 ").value());
         assertThrows(DomainException.class, () -> VoucherCode.of("a b"));

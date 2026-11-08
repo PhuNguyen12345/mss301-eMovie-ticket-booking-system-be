@@ -15,7 +15,7 @@ public interface VoucherRepository {
 
     Optional<Voucher> findBySourcePaymentId(Integer paymentId);
 
-    Optional<Voucher> findBySourceBookingId(Integer bookingId);
+    Optional<Voucher> findBySource(Integer bookingId, VoucherSourceReason reason);
 
     /** Vouchers a booking has held since before {@code before}, oldest first. */
     List<Integer> findReservedSince(LocalDateTime before, int limit);

@@ -5,6 +5,7 @@ import fu.mss301.booking.application.port.VoucherQueries;
 import fu.mss301.booking.domain.voucher.Voucher;
 import fu.mss301.booking.domain.voucher.VoucherCodeTakenException;
 import fu.mss301.booking.domain.voucher.VoucherRepository;
+import fu.mss301.booking.domain.voucher.VoucherSourceReason;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -69,8 +70,8 @@ class JpaVoucherRepository implements VoucherRepository, VoucherQueries {
     }
 
     @Override
-    public Optional<Voucher> findBySourceBookingId(Integer bookingId) {
-        return jpa.findBySourceBookingId(bookingId).map(VoucherMapper::toDomain);
+    public Optional<Voucher> findBySource(Integer bookingId, VoucherSourceReason reason) {
+        return jpa.findBySourceBookingIdAndSourceReason(bookingId, reason).map(VoucherMapper::toDomain);
     }
 
     @Override

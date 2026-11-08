@@ -26,7 +26,8 @@ class ShowtimeCatalogAdapter implements ShowtimeCatalog {
             throw new UpstreamServiceException("Showtime service returned invalid showtime data");
         }
         return new ShowtimeSnapshot(showtime.id(), showtime.movieId(), showtime.cinemaId(), showtime.screenId(),
-            showtime.startTime(), showtime.endTime(), showtime.basePrice(), "SCHEDULED".equals(showtime.status()));
+            showtime.startTime(), showtime.endTime(), showtime.basePrice(), "SCHEDULED".equals(showtime.status()),
+            "CANCELLED".equals(showtime.status()));
     }
 
     @Override

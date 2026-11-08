@@ -58,6 +58,21 @@ class PaymentTransactionTest {
     }
 
     @Test
+    void aPaymentCanBeGivenBackOverSeveralVouchersThatAddUpToIt() {
+        PaymentTransaction payment = pending();
+        payment.markSucceeded(new BigDecimal("180000"), "FT1", NOW, NOW);
+        assertThrows(DomainException.class, () -> payment.compensateWithVouchers(
+            List.of(new VoucherShare(1, new BigDecimal("100000"))), "cancelled", NOW));
+        assertThrows(DomainException.class, () -> new VoucherShare(1, BigDecimal.ZERO));
+        assertTrue(payment.compensateWithVouchers(List.of(new VoucherShare(1, new BigDecimal("85000")),
+            new VoucherShare(2, new BigDecimal("95000"))), "cancelled", NOW));
+        assertEquals(PaymentStatus.REFUNDED, payment.status());
+        assertEquals(List.of(1, 2), payment.refunds().stream().map(Refund::voucherId).toList());
+        assertEquals(new BigDecimal("85000.00"), payment.refunds().getFirst().amount());
+        assertFalse(payment.compensateWithVouchers(List.of(new VoucherShare(3, new BigDecimal("180000"))), "again", NOW));
+    }
+
+    @Test
     void aVoucherRefundIsAlreadyDoneSoItCannotBeCompletedByHand() {
         var given = Refund.restore(4, new BigDecimal("180000.00"), "late", RefundMethod.VOUCHER, 77,
             RefundStatus.COMPLETED, NOW, NOW, NOW);

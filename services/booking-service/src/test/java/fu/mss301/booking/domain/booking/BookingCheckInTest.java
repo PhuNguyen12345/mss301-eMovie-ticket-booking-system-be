@@ -73,7 +73,7 @@ class BookingCheckInTest {
         Booking restored = Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(),
             booking.ticket(), booking.bookingTime(), booking.totalAmount(), booking.discountAmount(), booking.status(),
             booking.expiredAt(), 1, booking.createdAt(), booking.updatedAt(), booking.seats(), booking.combos(),
-            booking.vouchers(), List.of(stored));
+            booking.vouchers(), List.of(stored), null, null);
         assertEquals(2, restored.admittedCount());
         assertEquals(1, restored.remainingToAdmit());
         assertThrows(UnsupportedOperationException.class, () -> restored.checkIns().clear());
@@ -95,6 +95,6 @@ class BookingCheckInTest {
         return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.ticket(),
             booking.bookingTime(), booking.totalAmount(), booking.discountAmount(), booking.status(), booking.expiredAt(), 0,
             booking.createdAt(), booking.updatedAt(), booking.seats(), booking.combos(), booking.vouchers(),
-            booking.checkIns());
+            booking.checkIns(), booking.showtimeCancelledAt(), booking.compensatedAt());
     }
 }
