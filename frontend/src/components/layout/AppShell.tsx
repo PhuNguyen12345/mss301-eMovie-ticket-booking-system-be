@@ -4,6 +4,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useSession } from "../../app/ServicesProvider";
 import { LoginDialog } from "../../features/auth/LoginDialog";
 import { Button } from "../ui/Button";
+import { ErrorMessage } from "../ui/Feedback";
 export function AppShell() {
   const session = useSession();
   const [login, setLogin] = useState(false);
@@ -40,15 +41,28 @@ export function AppShell() {
               <span className="account-name">
                 {session.current.user.fullName}
               </span>
-              <Button onClick={session.logout}>Đăng xuất</Button>
+              <Button onClick={session.logout} pending={session.loggingOut}>
+                Đăng xuất
+              </Button>
             </>
           ) : (
-            session.mode === "api" && (
+            session.mode === "api" &&
+            !session.restoring && (
               <Button onClick={() => setLogin(true)}>Đăng nhập</Button>
             )
           )}
         </div>
       </header>
+      {session.logoutError ? (
+        <div className="page">
+          <ErrorMessage
+            error={session.logoutError}
+            retry={() => {
+              void session.logout();
+            }}
+          />
+        </div>
+      ) : null}
       <div id="content">
         <Outlet />
       </div>

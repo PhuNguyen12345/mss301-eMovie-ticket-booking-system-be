@@ -38,8 +38,10 @@ checkout; see [MEMORY.md](MEMORY.md) for source revisions, local fixes and verif
 integration limits.
 
 For production, configure the hosting reverse proxy for `/api` and serve
-`index.html` for FE routes, including `/payment/result`. Alternatively set
-`VITE_API_BASE_URL` at build time and configure backend CORS. `VITE_*` values are
+`index.html` for FE routes, including `/payment/result`. For a separate API origin, keep it on the same site (same scheme and registrable
+domain), set `VITE_API_BASE_URL` and allow the exact FE origin in backend CORS.
+Browser refresh cookies use `SameSite=Strict`; unrelated FE/API sites are unsupported.
+Keep `SESSION_COOKIE_SECURE=true` on HTTPS; use `false` only for local HTTP. `VITE_*` values are
 public browser configuration, not secrets.
 
 An explicit visual preview is available with:
@@ -108,13 +110,19 @@ multipart JPEG/PNG files up to 5 MiB; external storage needs Cloudinary credenti
 - Zod validates API envelopes and response payloads. Query keys include filters
   and user identity for private data. Reads support cancellation and bounded
   retries; mutations are never retried automatically.
-- Tokens live only in memory. Before expiry, one shared `POST /auth/refresh`
-  request rotates tokens; requests wait for it without replaying mutations.
-  Logout/new login prevents old refresh responses from restoring a previous
-  session. Routine rotation preserves private caches and active booking flows.
-  Reload/PayOS return, failed refresh and an authenticated 401 require login
-  again. Logout clears the session and private caches; server token revocation
-  and a persistent cookie session still need backend support.
+- Access tokens live only in memory. The browser logs in and refreshes through
+  `POST /auth/login?transport=cookie` and `POST /auth/refresh?transport=cookie`.
+  Refresh tokens stay in an HttpOnly cookie scoped to `/api/auth`; they are never
+  returned to browser JavaScript or saved in localStorage/sessionStorage.
+- Reload and payment returns restore the session before private screens load.
+  Rotation is serialized within a tab and across tabs using Web Locks where
+  available. Authentication changes notify other tabs through BroadcastChannel.
+  Mutations wait for refresh and are never automatically replayed.
+- Temporary restore failures show a retry; invalid/expired cookies require login.
+  `POST /auth/logout` revokes the current browser refresh token and expires the
+  cookie before clearing private data. A failed logout stays visible for retry.
+  Logout does not revoke other devices or invalidate already issued access tokens;
+  those expire normally. Existing JSON token login/refresh clients remain supported.
 - Seat availability refreshes every 10 seconds. Holds and totals are authoritative
   backend responses. A 409 refreshes availability without replaying the hold.
 - Pending booking detail refreshes every 5 seconds. The timer uses backend
@@ -129,7 +137,7 @@ multipart JPEG/PNG files up to 5 MiB; external storage needs Cloudinary credenti
 - PayOS checkout requires an HTTPS PayOS URL. Configure the backend return and
   cancel URLs to this FE's `/payment/result`. `orderCode` identifies the booking
   using the backend's `bookingId * 100 + attempt` contract; query parameters never
-  confirm payment. Returning users log in again, then FE calls backend sync once
+  confirm payment. Returning users restore their session, then FE calls backend sync once
   and displays its result. Missing return identifiers lead to booking history.
 - Refund completion records a manual transfer after explicit confirmation. It
   does not transfer money. No secure ticket QR is fabricated from bookingCode.
@@ -141,7 +149,7 @@ src/
   app/                 Service composition, session lifecycle and lazy routes
   components/layout/   Customer shell, admin layout, access gates
   components/ui/       Shared fields, dialogs, buttons, feedback, placeholders
-  features/auth/       In-memory session and customer/admin login
+  features/auth/       Cookie restoration, access-token rotation and login
   features/movies/     Catalogue/detail contracts, hooks and screens
   features/movie-management/ Genre/person CRUD, association editors and poster uploads
   features/booking/    Seats, holds, history, checkout and payment return
@@ -173,7 +181,8 @@ holds, role access, private-cache isolation, refund confirmation and mobile
 layout. Browser API tests use mocked HTTP contracts and a mocked PayOS checkout;
 they do not perform real transactions or replace live backend integration testing.
 
-Current checks: 27 unit tests and 41 browser contract tests, including session
+Current checks include unit and browser contract tests for cookie restoration,
+reload/payment returns, concurrent tabs, logout failure, session
 rotation races, multipart handling and movie-management drafts. Separately, live
 Chromium verified registration/reset with MailHog OTPs, cinema/room/seat creation,
 showtime pricing, a real seat hold, combo totals, cancellation and admin booking

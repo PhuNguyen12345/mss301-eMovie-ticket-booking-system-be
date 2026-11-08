@@ -38,6 +38,7 @@ type RequestOptions = {
   body?: unknown;
   signal?: AbortSignal;
   anonymous?: boolean;
+  cookieSession?: boolean;
   timeoutMs?: number;
 };
 
@@ -66,7 +67,7 @@ export function createHttpClient(options: ClientOptions) {
           {
             method: request.method ?? "GET",
             signal,
-            credentials: "omit",
+            credentials: request.cookieSession ? "include" : "omit",
             headers: {
               Accept: "application/json",
               ...(request.body !== undefined &&
@@ -116,7 +117,7 @@ export function createHttpClient(options: ClientOptions) {
       if (!response.ok) {
         const message =
           response.status === 401
-            ? request.anonymous
+            ? request.anonymous && path.split("?")[0] === "/auth/login"
               ? "Email hoặc mật khẩu không đúng."
               : "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
             : response.status === 403

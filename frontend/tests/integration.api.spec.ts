@@ -65,6 +65,8 @@ async function setup(page: Page) {
       const body = request.postData() ? request.postDataJSON() : null;
       if (request.method() !== "GET") state.writes.push({ path, body });
       else state.reads.push(url.pathname + url.search);
+      if (path === "/api/auth/refresh") return send(null, 401);
+      if (path === "/api/auth/logout") return send(null);
       if (path === "/api/auth/login")
         return send({
           accessToken: "admin-test-token",

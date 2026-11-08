@@ -3,6 +3,7 @@ import { useSession } from "../../app/ServicesProvider";
 import { LoginDialog } from "../../features/auth/LoginDialog";
 import { Button } from "../ui/Button";
 import { Placeholder } from "../ui/Placeholder";
+import { ErrorMessage, Loading } from "../ui/Feedback";
 export function AccessGate({
   children,
   admin = false,
@@ -22,6 +23,21 @@ export function AccessGate({
       </div>
     );
   if (admin && session.mode === "demo") return children;
+  if (session.restoring)
+    return (
+      <div className="page">
+        <Loading />
+      </div>
+    );
+  if (session.restoreError)
+    return (
+      <div className="page">
+        <ErrorMessage
+          error={session.restoreError}
+          retry={session.retryRestore}
+        />
+      </div>
+    );
   if (!session.current)
     return (
       <div className="page">

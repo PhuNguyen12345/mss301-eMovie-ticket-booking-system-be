@@ -34,6 +34,7 @@ async function setup(page: Page) {
     posterStatus: 503,
     posterUrl: null as string | null,
     refreshCalls: 0,
+    authenticated: false,
     role: "ADMIN",
     movieStatus: "PRESENTING",
     statusResponse: 200,
@@ -60,7 +61,14 @@ async function setup(page: Page) {
         route.fulfill({ status, json: { status, message, data } });
       if (method !== "GET")
         state.writes.push({ path, method, body, headers: req.headers() });
+      if (path === "/api/auth/logout") {
+        state.authenticated = false;
+        return send(null);
+      }
       if (path === "/api/auth/login" || path === "/api/auth/refresh") {
+        if (path.endsWith("/refresh") && !state.authenticated)
+          return send(null, 401);
+        state.authenticated = true;
         if (path.endsWith("/refresh")) state.refreshCalls++;
         return send({
           accessToken: `token-${state.refreshCalls}`,

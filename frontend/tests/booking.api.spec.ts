@@ -106,6 +106,8 @@ async function mockApi(page: Page) {
         });
       const catalogue = cinemaResponse(url.pathname);
       if (catalogue !== undefined) return send(catalogue);
+      if (path === "/api/auth/refresh") return send(null, 401);
+      if (path === "/api/auth/logout") return send(null);
       if (path === "/api/auth/login")
         return send({
           accessToken: `token-${state.userId}`,

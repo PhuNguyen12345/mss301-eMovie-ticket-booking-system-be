@@ -26,7 +26,14 @@ import { createComboApi } from "../features/combos/api";
 import { createMovieManagementApi } from "../features/movie-management/api";
 
 function createServices() {
-  const session = createSessionStore();
+  const mode = import.meta.env.VITE_DATA_MODE || "api";
+  const session = createSessionStore({
+    cookie: mode === "api",
+    exclusive: (operation) =>
+      navigator.locks
+        ? navigator.locks.request("emovie-browser-session", operation)
+        : operation(),
+  });
   const client: HttpClient = createHttpClient({
     baseUrl: import.meta.env.VITE_API_BASE_URL || "/api",
     accessToken: () => session.accessToken(client),
@@ -34,11 +41,11 @@ function createServices() {
       if (session.getSnapshot()?.token === token) session.clear();
     },
   });
-  const mode = import.meta.env.VITE_DATA_MODE || "api";
   if (mode !== "demo" && mode !== "api")
     throw new Error("VITE_DATA_MODE must be demo or api");
   return {
     session,
+    sessionSource: crypto.randomUUID(),
     client,
     movies: createMovieApi(client),
     booking: createBookingApi(client),
@@ -72,6 +79,17 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
     services.session.subscribe,
     services.session.getSnapshot,
   );
+  useEffect(() => {
+    void services.session.restore(services.client);
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("emovie-session-events");
+    channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (event.data === services.sessionSource) return;
+      services.session.clear();
+      void services.session.restore(services.client, true);
+    };
+    return () => channel.close();
+  }, [services]);
   useEffect(() => {
     const identity = () => {
       const session = services.session.getSnapshot();
@@ -123,19 +141,46 @@ export function useServices() {
   return services;
 }
 export function useSession() {
-  const { session, client, showtimes } = useServices();
+  const { session, client, showtimes, sessionSource } = useServices();
   const queryClient = useQueryClient();
   const current = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const lifecycle = useSyncExternalStore(
+    session.subscribe,
+    session.getLifecycle,
+  );
+  const broadcast = () => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel("emovie-session-events");
+    channel.postMessage(sessionSource);
+    channel.close();
+  };
   return {
     current,
+    restoring: lifecycle.pending,
+    restoreError: lifecycle.error,
+    loggingOut: lifecycle.loggingOut,
+    logoutError: lifecycle.logoutError,
+    retryRestore: () => {
+      void session.restore(client, true);
+    },
     canWrite:
       showtimes.mode === "demo" || !!current?.user.roles.includes("ADMIN"),
     isAdmin: !!current?.user.roles.includes("ADMIN"),
     mode: showtimes.mode,
     login: async (email: string, password: string, signal?: AbortSignal) => {
       await session.login(client, email, password, signal);
-      if (session.getSnapshot()) void queryClient.invalidateQueries();
+      if (session.getSnapshot()) {
+        void queryClient.invalidateQueries();
+        broadcast();
+      }
     },
-    logout: session.clear,
+    logout: async () => {
+      try {
+        await session.logout(client);
+        broadcast();
+      } catch {
+        /* The shared session feedback displays logout failures. */
+      }
+    },
   };
 }

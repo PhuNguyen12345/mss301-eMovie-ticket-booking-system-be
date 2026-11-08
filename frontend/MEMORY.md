@@ -20,13 +20,13 @@ Updated: 2026-11-08. Read this file before continuing FE work.
 | Cinema / screen / seat types                 | Merged in master; connected to /admin/cinema, dependent showtime selectors and customer venue names/filter | No delete or seat-position/type update endpoints; do not invent those operations                            |
 | GET /api/screens/{id}/seats                  | Available; real physical seat creation and booking hold verified                                           | Keep physical status separate from per-showtime availability                                                |
 | GET /api/screens/{id}, GET /api/cinemas/{id} | Available; real showtime creation verified                                                                 | Keep screen selection scoped to its cinema                                                                  |
-| Auth compatibility                           | HS256 and /api/auth + /api/users aliases merged; live login verified                                       | Tokens still remain in memory                                                                               |
+| Auth compatibility                           | HS256 and /api/auth + /api/users aliases merged; live login verified                                       | Access token in memory; refresh credential in HttpOnly cookie                                                                               |
 | Registration / forgotten password            | Gateway routes enabled; full registration, resend, verify, forgot/reset connected                          | OTP sender wiring fix is included on this FE branch; carry it into deployment with these screens            |
 | Per-seat-type pricing                        | Merged and connected to live seat-type catalogue                                                           | Live hold verified override price 125000 rather than base price 90000                                       |
 | Combos                                       | Public/admin catalogue, create/update, activate/deactivate and booking replacement connected               | Backend controls totals and disallows changes while a payment link is pending                               |
-| Vouchers                                     | Database schema only, no API                                                                               | Add server-authoritative discount application when available                                                |
+| Vouchers                                     | PR #35 is open for management/claim; not merged                                                                               | Add server-authoritative discount application when available                                                |
 | Profile updates                              | GET /api/users/me exists; update API missing                                                               | Replace read-only profile placeholder with an edit form                                                     |
-| Server logout                                | Refresh-token revocation API missing                                                                       | Replace local session clear with server revocation; do not claim all sessions revoked                       |
+| Server logout                                | Cookie logout and current refresh-token revocation implemented                                                                       | Only the current browser session is revoked; issued access tokens expire normally                       |
 | Admin booking search                         | GET /api/bookings merged and connected to /admin/orders with code/status/user/showtime/date filters        | Search and pagination run on the server; private cache includes user identity                               |
 | Reporting                                    | No endpoints                                                                                               | Add real revenue statistics; do not derive totals from one page                                             |
 | Ticket details                               | Booking response now includes ticket, named seats and combos                                               | Render stored ticket snapshot first; older bookings fall back to catalogue lookup                           |
@@ -43,8 +43,10 @@ it does not transfer money.
 ## Integration rules
 
 - API mode is the default; explicit demo mode is for visual review only.
-- Tokens remain in memory. Reload / PayOS return may require login again.
-- Access tokens refresh before expiry through POST /auth/refresh, with one shared
+- Browser access tokens remain in memory. HttpOnly refresh cookies restore the
+  session on reload / PayOS return. Secure cookies default on; local HTTP uses
+  SESSION_COOKIE_SECURE=false. Deploy FE/API on the same site, preferably /api proxy.
+- Access tokens refresh before expiry through POST /auth/refresh?transport=cookie, with one shared
   refresh request and no mutation replay. Logout/new login invalidates pending
   refresh results; routine rotation preserves private caches and booking ownership.
 - Private query keys include user identity; clear private caches on logout or
@@ -102,7 +104,7 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
   called separately. PayOS webhooks are called by PayOS, never by FE.
 - Detail GETs for genres/persons/seat-types/seats remain available for future
   dedicated detail screens; current editors use the corresponding list records.
-  These are not missing backend APIs. The missing-business-API table remains valid.
+  These are not missing backend APIs. Voucher PR #35 is now open (part 1/3); booking discount application is still pending.
 
 ## Local verification
 
@@ -153,3 +155,14 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   pagination/history, dependent venue resets and rejected status changes.
   Artifacts: runtime `live-results/catalogue-filter-report.json`,
   `catalogue-filter-mobile.png`, `location-filter-admin.png`.
+
+## Browser session completion (2026-11-08)
+
+- Cookie login/refresh returns only access tokens to JS; JSON token clients remain
+  compatible. Logout revokes the current refresh token and removes its cookie.
+- Restore gates private screens; temporary failures offer retry. Mutations wait
+  for refresh but are never replayed. In-tab serialization plus Web Locks prevent
+  parallel rotations; BroadcastChannel synchronizes login/logout across tabs.
+- Unit regressions cover restore races, expired cookies, transient errors and
+  logout during restore. Browser contracts cover F5, payment return, multiple
+  tabs, cookie visibility, failed restore and failed logout.

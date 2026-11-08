@@ -42,6 +42,8 @@ async function mockApi(page: Page) {
         route.fulfill({ status, json: { status, message: "OK", data } });
       const catalogue = cinemaResponse(url.pathname);
       if (catalogue !== undefined) return send(catalogue);
+      if (url.pathname === "/api/auth/refresh") return send(null, 401);
+      if (url.pathname === "/api/auth/logout") return send(null);
       if (url.pathname === "/api/auth/login")
         return send({
           accessToken: "test-admin-token",
