@@ -65,6 +65,12 @@ public class BookingEntity {
     @Column(name = "expired_at", nullable = false, updatable = false)
     private LocalDateTime expiredAt;
 
+    @Column(name = "showtime_cancelled_at")
+    private LocalDateTime showtimeCancelledAt;
+
+    @Column(name = "compensated_at")
+    private LocalDateTime compensatedAt;
+
     @Version
     private Integer version;
 

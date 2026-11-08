@@ -19,4 +19,10 @@ public interface BookingRepository {
     Optional<Booking> findByCodeForUpdate(String bookingCode);
 
     List<Integer> findOverdueIds(LocalDateTime now, int limit);
+
+    /** Bookings of a showtime that are waiting for payment or paid. */
+    List<Integer> findOpenIdsByShowtime(Long showtimeId);
+
+    /** Paid bookings whose showtime was cancelled and whose customer is not compensated yet, oldest first. */
+    List<Integer> findUncompensatedIds(int limit);
 }

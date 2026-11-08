@@ -2,10 +2,12 @@ package fu.mss301.booking.infrastructure.event;
 
 import fu.mss301.booking.application.policy.BookingEventPolicy;
 import fu.mss301.booking.application.policy.PaymentEventPolicy;
+import fu.mss301.booking.application.policy.ShowtimeCompensationPolicy;
 import fu.mss301.booking.application.policy.VoucherEventPolicy;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
+import fu.mss301.booking.domain.booking.event.BookingShowtimeCancelled;
 import fu.mss301.booking.domain.booking.event.BookingVoucherRemoved;
 import fu.mss301.booking.domain.payment.event.PaymentSucceeded;
 import org.springframework.stereotype.Component;
@@ -18,12 +20,19 @@ class DomainEventListener {
     private final BookingEventPolicy bookingPolicy;
     private final PaymentEventPolicy paymentPolicy;
     private final VoucherEventPolicy voucherPolicy;
+    private final ShowtimeCompensationPolicy compensationPolicy;
 
     DomainEventListener(BookingEventPolicy bookingPolicy, PaymentEventPolicy paymentPolicy,
-                        VoucherEventPolicy voucherPolicy) {
+                        VoucherEventPolicy voucherPolicy, ShowtimeCompensationPolicy compensationPolicy) {
         this.bookingPolicy = bookingPolicy;
         this.paymentPolicy = paymentPolicy;
         this.voucherPolicy = voucherPolicy;
+        this.compensationPolicy = compensationPolicy;
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void on(BookingShowtimeCancelled event) {
+        compensationPolicy.on(event);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

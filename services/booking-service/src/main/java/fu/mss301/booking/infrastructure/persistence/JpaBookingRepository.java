@@ -68,6 +68,17 @@ class JpaBookingRepository implements BookingRepository {
     }
 
     @Override
+    public List<Integer> findOpenIdsByShowtime(Long showtimeId) {
+        return jpa.findIdsByShowtimeAndStatusIn(showtimeId,
+            List.of(BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED));
+    }
+
+    @Override
+    public List<Integer> findUncompensatedIds(int limit) {
+        return jpa.findIdsByStatusNotCompensated(BookingStatus.SHOWTIME_CANCELLED, PageRequest.of(0, limit));
+    }
+
+    @Override
     public List<Integer> findOverdueIds(LocalDateTime now, int limit) {
         return jpa.findIdsByStatusExpiredBefore(BookingStatus.PENDING_PAYMENT, now, PageRequest.of(0, limit));
     }

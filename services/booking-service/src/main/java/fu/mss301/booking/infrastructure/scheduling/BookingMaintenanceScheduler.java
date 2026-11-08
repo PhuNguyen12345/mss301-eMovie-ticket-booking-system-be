@@ -1,6 +1,7 @@
 package fu.mss301.booking.infrastructure.scheduling;
 
 import fu.mss301.booking.application.booking.ExpireOverdueBookingsUseCase;
+import fu.mss301.booking.application.booking.ShowtimeCompensationService;
 import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
 import fu.mss301.booking.application.voucher.VoucherReservations;
 import fu.mss301.booking.infrastructure.config.BookingProperties;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Releases expired seat holds, re-drives payments whose booking update was missed and settles vouchers a booking
- * has held for too long.
+ * has held for too long, and finishes compensating customers of cancelled showtimes.
  */
 @Component
 @ConditionalOnProperty(name = "booking.scheduling.enabled", havingValue = "true", matchIfMissing = true)
@@ -21,13 +22,16 @@ class BookingMaintenanceScheduler {
     private final ExpireOverdueBookingsUseCase expireOverdue;
     private final ReconcilePaymentUseCase reconcile;
     private final VoucherReservations vouchers;
+    private final ShowtimeCompensationService compensation;
     private final BookingProperties properties;
 
     BookingMaintenanceScheduler(ExpireOverdueBookingsUseCase expireOverdue, ReconcilePaymentUseCase reconcile,
-                                VoucherReservations vouchers, BookingProperties properties) {
+                                VoucherReservations vouchers, ShowtimeCompensationService compensation,
+                                BookingProperties properties) {
         this.expireOverdue = expireOverdue;
         this.reconcile = reconcile;
         this.vouchers = vouchers;
+        this.compensation = compensation;
         this.properties = properties;
     }
 
@@ -38,6 +42,7 @@ class BookingMaintenanceScheduler {
             if (expired > 0) log.info("Expired {} unpaid bookings", expired);
             reconcile.settleUnsettled(properties.expiryBatchSize());
             vouchers.settleStale(properties.expiryBatchSize());
+            compensation.compensatePending(properties.expiryBatchSize());
         } catch (RuntimeException exception) {
             log.error("Booking maintenance run failed", exception);
         }

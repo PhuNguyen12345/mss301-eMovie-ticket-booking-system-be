@@ -3,6 +3,9 @@ package fu.mss301.booking.infrastructure.config;
 import fu.mss301.booking.application.booking.BookingQueryService;
 import fu.mss301.booking.application.booking.CancelBookingUseCase;
 import fu.mss301.booking.application.booking.CheckInUseCase;
+import fu.mss301.booking.application.booking.ShowtimeCancellationUseCase;
+import fu.mss301.booking.application.booking.ShowtimeCompensationService;
+import fu.mss301.booking.application.policy.ShowtimeCompensationPolicy;
 import fu.mss301.booking.application.booking.TicketQrUseCase;
 import fu.mss301.booking.application.port.QrCodeRenderer;
 import fu.mss301.booking.domain.booking.CheckInWindow;
@@ -153,6 +156,27 @@ public class UseCaseConfig {
     CheckInUseCase checkInUseCase(BookingRepository bookings, ShowtimeCatalog showtimes, CheckInWindow window,
                                   Transactions transactions, Clock clock) {
         return new CheckInUseCase(bookings, showtimes, window, transactions, clock);
+    }
+
+    @Bean
+    ShowtimeCompensationService showtimeCompensationService(BookingRepository bookings, PaymentRepository payments,
+                                                            VoucherRepository vouchers, ValueVoucherIssuer issuer,
+                                                            ShowtimeCatalog showtimes, Transactions transactions,
+                                                            BookingProperties properties, Clock clock) {
+        return new ShowtimeCompensationService(bookings, payments, vouchers, issuer, showtimes, transactions,
+            properties.showtimeCancelNotice(), clock);
+    }
+
+    @Bean
+    ShowtimeCompensationPolicy showtimeCompensationPolicy(ShowtimeCompensationService compensation) {
+        return new ShowtimeCompensationPolicy(compensation);
+    }
+
+    @Bean
+    ShowtimeCancellationUseCase showtimeCancellationUseCase(ShowtimeCatalog showtimes, BookingRepository bookings,
+                                                            Transactions transactions, DomainEvents events,
+                                                            Clock clock) {
+        return new ShowtimeCancellationUseCase(showtimes, bookings, transactions, events, clock);
     }
 
     @Bean

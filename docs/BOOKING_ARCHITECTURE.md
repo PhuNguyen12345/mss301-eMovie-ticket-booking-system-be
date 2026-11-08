@@ -139,6 +139,19 @@ Giờ chiếu đọc từ bản sao vé. Booking cũ không có bản sao thì `
 
 Mã QR vẽ qua port `QrCodeRenderer`, nên `application` không phụ thuộc ZXing.
 
+## Suất chiếu bị hủy
+
+`ShowtimeCancellationUseCase` hỏi showtime-service để chắc suất đã hủy, rồi gọi `Booking.cancelForShowtime` cho từng booking, mỗi booking một transaction. Booking chờ thanh toán phát `BookingCancelled`, nên các policy có sẵn đóng link PayOS và trả voucher. Booking đã thanh toán phát `BookingShowtimeCancelled`.
+
+`ShowtimeCompensationPolicy` gọi `ShowtimeCompensationService.compensate`. `ShowtimeCompensation` trong domain tính số tiền, service chạy 4 bước, mỗi bước một transaction:
+
+1. Trả voucher đã dùng.
+2. Phát voucher, mỗi `VoucherSourceReason` một cái.
+3. Ghi refund cho payment.
+4. `markCompensated`.
+
+Bước nào cũng lặp lại được, nên job bảo trì chạy lại booking chưa có `compensated_at`. `VoucherReservations.settle` bỏ qua voucher của booking `SHOWTIME_CANCELLED`, để chỉ bước 1 quyết định voucher đó.
+
 ## Combo
 
 `Combo` là aggregate riêng, `Booking` chỉ giữ `comboId` và bản sao đơn giá. `PUT /api/bookings/{id}/combos` chỉ ghi vào `Booking`, còn `Combo` chỉ được đọc, nên vẫn giữ quy tắc 1 transaction ghi 1 aggregate.

@@ -44,6 +44,7 @@ class BookingControllerTests {
     private ApplyVoucherUseCase vouchers;
     private CheckInUseCase checkIn;
     private TicketQrUseCase ticketQr;
+    private ShowtimeCancellationUseCase showtimeCancellation;
     private MockMvc mvc;
 
     @BeforeEach
@@ -57,9 +58,11 @@ class BookingControllerTests {
         vouchers = mock(ApplyVoucherUseCase.class);
         checkIn = mock(CheckInUseCase.class);
         ticketQr = mock(TicketQrUseCase.class);
+        showtimeCancellation = mock(ShowtimeCancellationUseCase.class);
         mvc = MockMvcBuilders.standaloneSetup(
                 new BookingController(mock(SeatMapQuery.class), holdSeats, queries,
-                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers, checkIn, ticketQr),
+                    mock(CancelBookingUseCase.class), initiatePayment, replaceCombos, vouchers, checkIn, ticketQr,
+                    showtimeCancellation),
                 new PaymentController(webhook, mock(ReconcilePaymentUseCase.class), refunds))
             .setCustomArgumentResolvers(new CurrentUserArgumentResolver())
             .setControllerAdvice(new BookingExceptionHandler(), new GlobalExceptionHandler())
@@ -70,7 +73,7 @@ class BookingControllerTests {
     void holdReturns201WithLocation() throws Exception {
         when(holdSeats.hold(7, 3L, List.of(101, 102))).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
             BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), BigDecimal.ZERO, new BigDecimal("180000.00"),
-            LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(), 0, null));
+            LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(), 0, null, null));
         mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
             .andExpect(status().isCreated())
@@ -122,7 +125,7 @@ class BookingControllerTests {
         when(replaceCombos.replace(7, 11, List.of(new ComboLine(5, 2)))).thenReturn(new BookingView(11,
             "BK260101000000ABCDEF", 7, 3L, BookingStatus.PENDING_PAYMENT, new BigDecimal("260000.00"), BigDecimal.ZERO,
             new BigDecimal("260000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(),
-            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), List.of(), 0, null));
+            List.of(new BookingView.ComboItem(5, "Bắp nước", 2, new BigDecimal("85000.00"))), List.of(), 0, null, null));
         mvc.perform(put("/api/bookings/11/combos").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"combos\":[{\"comboId\":5,\"quantity\":2}]}"))
             .andExpect(status().isOk())
@@ -138,7 +141,7 @@ class BookingControllerTests {
         when(vouchers.apply(7, 11, "emfree", 101)).thenReturn(new BookingView(11, "BK260101000000ABCDEF", 7, 3L,
             BookingStatus.PENDING_PAYMENT, new BigDecimal("180000.00"), new BigDecimal("90000.00"),
             new BigDecimal("90000.00"), LocalDateTime.now(), LocalDateTime.now(), null, List.of(), List.of(), List.of(line),
-            0, null));
+            0, null, null));
         mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"emfree\",\"seatId\":101}"))
             .andExpect(status().isOk())
@@ -223,6 +226,21 @@ class BookingControllerTests {
             .andExpect(content().contentType(MediaType.IMAGE_PNG))
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(content().bytes(new byte[] {(byte) 0x89, 'P', 'N', 'G'}));
+    }
+
+    @Test
+    void onlyAdminsReRunACancelledShowtime() throws Exception {
+        mvc.perform(post("/api/bookings/showtimes/15/cancellation").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(showtimeCancellation);
+        when(showtimeCancellation.handle(15L)).thenReturn(new ShowtimeCancellationView(15L, 1, 2, 0));
+        mvc.perform(post("/api/bookings/showtimes/15/cancellation").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.cancelledPending").value(1))
+            .andExpect(jsonPath("$.data.cancelledPaid").value(2));
+        when(showtimeCancellation.handle(16L)).thenThrow(new InvalidStateTransitionException("not cancelled"));
+        mvc.perform(post("/api/bookings/showtimes/16/cancellation").header("X-User-Id", "1").header("X-User-Roles", "ADMIN"))
+            .andExpect(status().isConflict());
     }
 
     private static CheckInView checkInView(int admitted, int remaining) {

@@ -53,6 +53,7 @@ booking:
   value-voucher-ttl: ${BOOKING_VALUE_VOUCHER_TTL:P90D}
   check-in-opens-before: ${BOOKING_CHECK_IN_OPENS_BEFORE:PT15M}
   check-in-closes-after: ${BOOKING_CHECK_IN_CLOSES_AFTER:PT20M}
+  showtime-cancel-notice: ${BOOKING_SHOWTIME_CANCEL_NOTICE:PT2H}
   clients:
     showtime-url: ${SHOWTIME_SERVICE_URL:}
     movie-url: ${MOVIE_SERVICE_URL:}

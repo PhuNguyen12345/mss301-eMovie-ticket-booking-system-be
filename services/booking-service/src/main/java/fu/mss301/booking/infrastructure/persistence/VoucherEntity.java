@@ -2,6 +2,7 @@ package fu.mss301.booking.infrastructure.persistence;
 
 import fu.mss301.booking.domain.voucher.DiscountType;
 import fu.mss301.booking.domain.voucher.VoucherKind;
+import fu.mss301.booking.domain.voucher.VoucherSourceReason;
 import fu.mss301.booking.domain.voucher.VoucherStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -56,6 +57,10 @@ public class VoucherEntity {
 
     @Column(name = "source_booking_id", updatable = false)
     private Integer sourceBookingId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_reason", updatable = false, length = 30)
+    private VoucherSourceReason sourceReason;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

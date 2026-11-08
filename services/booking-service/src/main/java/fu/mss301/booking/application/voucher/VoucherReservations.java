@@ -48,7 +48,9 @@ public class VoucherReservations {
             boolean changed;
             if (holds && booking.status() == BookingStatus.CONFIRMED) {
                 changed = voucher.markUsedBy(bookingId, now);
-            } else if (holds && booking.status() == BookingStatus.PENDING_PAYMENT) {
+            } else if (holds && (booking.status() == BookingStatus.PENDING_PAYMENT
+                    || booking.status() == BookingStatus.SHOWTIME_CANCELLED)) {
+                // Still in use, or ShowtimeCompensationService decides what happens to it.
                 changed = false;
             } else {
                 changed = voucher.releaseFrom(bookingId, now);

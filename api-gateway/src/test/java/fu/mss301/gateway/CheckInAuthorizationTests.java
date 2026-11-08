@@ -31,6 +31,7 @@ import static org.mockito.Mockito.when;
     "gateway.jwt.audience=e-movie",
     "gateway.cors.allowed-origins=http://localhost:3000"
 })
+/** Door staff and admin-only booking actions. */
 class CheckInAuthorizationTests {
     private static final String BODY = "{\"bookingCode\":\"BK1\"}";
 
@@ -55,6 +56,22 @@ class CheckInAuthorizationTests {
             .contentType(MediaType.APPLICATION_JSON).bodyValue(BODY).exchange().expectStatus().isForbidden();
         client.post().uri("/api/bookings/check-in").headers(h -> h.setBearerAuth("ADMIN"))
             .contentType(MediaType.APPLICATION_JSON).bodyValue(BODY).exchange().expectStatus().isOk();
+    }
+
+    @Test
+    void onlyAdminsReRunACancelledShowtime() {
+        client.post().uri("/api/bookings/showtimes/15/cancellation").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/bookings/showtimes/15/cancellation").headers(h -> h.setBearerAuth("CUSTOMER"))
+            .exchange().expectStatus().isForbidden();
+        client.post().uri("/api/bookings/showtimes/15/cancellation").headers(h -> h.setBearerAuth("ADMIN"))
+            .exchange().expectStatus().isOk();
+        client.get().uri("/api/bookings/showtimes/15/seats").exchange().expectStatus().isOk();
+    }
+
+    @Test
+    void theInternalPathIsNotReachableThroughTheGateway() {
+        client.post().uri("/internal/showtimes/15/cancellation").headers(h -> h.setBearerAuth("ADMIN"))
+            .exchange().expectStatus().isForbidden();
     }
 
     @Test
@@ -86,7 +103,13 @@ class CheckInAuthorizationTests {
             return Mono.just("ok");
         }
 
-        @PostMapping({"/api/bookings/check-in", "/api/bookings/{id}/cancel"})
+        @GetMapping("/api/bookings/showtimes/{id}/seats")
+        Mono<String> seats() {
+            return Mono.just("ok");
+        }
+
+        @PostMapping({"/api/bookings/check-in", "/api/bookings/{id}/cancel", "/api/bookings/showtimes/{id}/cancellation",
+            "/internal/showtimes/{id}/cancellation"})
         Mono<String> write() {
             return Mono.just("ok");
         }

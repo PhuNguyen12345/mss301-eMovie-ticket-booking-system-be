@@ -31,7 +31,8 @@ final class BookingMapper {
                 .sorted(Comparator.comparing(BookingCombo::comboId)).toList(),
             entity.getVouchers().stream().map(BookingMapper::voucherOf).toList(),
             entity.getCheckIns().stream().map(row -> BookingCheckIn.restore(row.getId(), row.getQuantity(),
-                row.getCheckedInBy(), row.getCheckedInAt())).toList());
+                row.getCheckedInBy(), row.getCheckedInAt())).toList(),
+            entity.getShowtimeCancelledAt(), entity.getCompensatedAt());
     }
 
     private static BookingVoucher voucherOf(BookingVoucherEntity row) {
@@ -78,6 +79,8 @@ final class BookingMapper {
         target.setDiscountAmount(source.discountAmount());
         target.setStatus(source.status());
         target.setUpdatedAt(source.updatedAt());
+        target.setShowtimeCancelledAt(source.showtimeCancelledAt());
+        target.setCompensatedAt(source.compensatedAt());
         var rows = target.getSeats().stream()
             .collect(Collectors.toMap(BookingSeatEntity::getId, Function.identity()));
         for (BookingSeat seat : source.seats()) {

@@ -1,5 +1,6 @@
 package fu.mss301.booking.infrastructure.persistence;
 
+import fu.mss301.booking.domain.voucher.VoucherSourceReason;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,7 +30,8 @@ interface VoucherJpaRepository extends JpaRepository<VoucherEntity, Integer> {
 
     Optional<VoucherEntity> findBySourcePaymentId(Integer sourcePaymentId);
 
-    Optional<VoucherEntity> findBySourceBookingId(Integer sourceBookingId);
+    Optional<VoucherEntity> findBySourceBookingIdAndSourceReason(Integer sourceBookingId,
+                                                                 VoucherSourceReason sourceReason);
 
     @Query("select v from VoucherEntity v join fetch v.claim c where c.userId = :userId order by v.id desc")
     List<VoucherEntity> findOwnedBy(@Param("userId") Integer userId);

@@ -65,6 +65,8 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.GET, "/api/bookings").hasRole("ADMIN")
                 // Door staff scan tickets; until a staff role exists this is for admins.
                 .pathMatchers(HttpMethod.POST, "/api/bookings/check-in").hasRole("ADMIN")
+                // Re-runs the handling of a cancelled showtime when showtime-service could not reach booking-service.
+                .pathMatchers(HttpMethod.POST, "/api/bookings/showtimes/*/cancellation").hasRole("ADMIN")
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
                 .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
                 .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
