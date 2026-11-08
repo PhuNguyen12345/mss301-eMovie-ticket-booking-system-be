@@ -1,6 +1,7 @@
 package fu.mss301.booking.infrastructure.persistence;
 
 import fu.mss301.booking.domain.booking.Booking;
+import fu.mss301.booking.domain.booking.BookingCheckIn;
 import fu.mss301.booking.domain.booking.BookingCode;
 import fu.mss301.booking.domain.booking.BookingCombo;
 import fu.mss301.booking.domain.booking.BookingSeat;
@@ -28,7 +29,9 @@ final class BookingMapper {
             entity.getCombos().stream().map(combo -> BookingCombo.restore(combo.getId(), combo.getCombo().getId(),
                     combo.getName(), combo.getQuantity(), combo.getPrice()))
                 .sorted(Comparator.comparing(BookingCombo::comboId)).toList(),
-            entity.getVouchers().stream().map(BookingMapper::voucherOf).toList());
+            entity.getVouchers().stream().map(BookingMapper::voucherOf).toList(),
+            entity.getCheckIns().stream().map(row -> BookingCheckIn.restore(row.getId(), row.getQuantity(),
+                row.getCheckedInBy(), row.getCheckedInAt())).toList());
     }
 
     private static BookingVoucher voucherOf(BookingVoucherEntity row) {
@@ -88,6 +91,20 @@ final class BookingMapper {
         }
         updateCombos(source, target, comboReference);
         updateVouchers(source, target);
+        addCheckIns(source, target);
+    }
+
+    /** Check-ins are history: new ones are added and stored ones never change. */
+    private static void addCheckIns(Booking source, BookingEntity target) {
+        for (BookingCheckIn checkIn : source.checkIns()) {
+            if (checkIn.id() != null) continue;
+            var row = new BookingCheckInEntity();
+            row.setBooking(target);
+            row.setQuantity(checkIn.quantity());
+            row.setCheckedInBy(checkIn.checkedInBy());
+            row.setCheckedInAt(checkIn.checkedInAt());
+            target.getCheckIns().add(row);
+        }
     }
 
     private static void updateVouchers(Booking source, BookingEntity target) {

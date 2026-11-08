@@ -29,6 +29,8 @@ public record BookingView(
     List<SeatLine> seats,
     List<ComboItem> combos,
     List<VoucherLine> vouchers,
+    /** How many people have gone in with this booking's code. */
+    int admittedCount,
     PaymentView payment
 ) {
     /** Null for bookings made before ticket details were stored. */
@@ -59,6 +61,7 @@ public record BookingView(
             booking.combos().stream().map(c -> new ComboItem(c.comboId(), c.name(), c.quantity(), c.price())).toList(),
             booking.vouchers().stream().map(v -> new VoucherLine(v.voucherId(), v.code(), v.kind(), v.seatId(),
                 v.comboId(), v.discountAmount(), v.expiresOn())).toList(),
+            booking.admittedCount(),
             latestPayment == null ? null : PaymentView.of(latestPayment));
     }
 }

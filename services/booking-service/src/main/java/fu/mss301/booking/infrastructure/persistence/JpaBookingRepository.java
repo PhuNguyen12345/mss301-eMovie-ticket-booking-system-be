@@ -58,6 +58,16 @@ class JpaBookingRepository implements BookingRepository {
     }
 
     @Override
+    public Optional<Booking> findByCode(String bookingCode) {
+        return jpa.findByBookingCode(bookingCode).map(BookingMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Booking> findByCodeForUpdate(String bookingCode) {
+        return jpa.lockByBookingCode(bookingCode).map(BookingMapper::toDomain);
+    }
+
+    @Override
     public List<Integer> findOverdueIds(LocalDateTime now, int limit) {
         return jpa.findIdsByStatusExpiredBefore(BookingStatus.PENDING_PAYMENT, now, PageRequest.of(0, limit));
     }

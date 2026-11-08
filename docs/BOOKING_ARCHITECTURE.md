@@ -9,7 +9,8 @@ API, schema và luồng nghiệp vụ xem ở [BOOKING_API.md](BOOKING_API.md).
 ```text
 fu.mss301.booking
   domain/
-    booking/         Booking, BookingSeat, BookingCombo, BookingVoucher, VoucherPricing, BookingCode,
+    booking/         Booking, BookingSeat, BookingCombo, BookingVoucher, VoucherPricing, BookingCheckIn,
+                     CheckInWindow, BookingCode,
                      BookingRepository, event/
     combo/           Combo, ComboRepository
     voucher/         Voucher, VoucherClaim, VoucherTerms, VoucherCode, VoucherRepository
@@ -29,6 +30,7 @@ fu.mss301.booking
     event/           SpringDomainEvents, DomainEventListener
     client/          Feign client và adapter
     payos/           Adapter PayOS SDK
+    qr/              Vẽ mã QR bằng ZXing
     config/          SpringTransactions, UseCaseConfig
     scheduling/      Job hết hạn và đối soát
   presentation/      Controller, request DTO, đọc user từ header, map lỗi sang HTTP
@@ -128,6 +130,14 @@ Tiền về mà không xuất được vé, `PaymentSettlementService.settle` ch
 Dừng giữa bước 2 và 3 thì job đối soát chạy lại `settle` và dùng lại voucher đã phát.
 
 Phần dư được phát trong `VoucherReservations.settle` **trước** khi đánh dấu voucher cũ `USED`. Nếu phát lỗi, voucher cũ vẫn `RESERVED` và job bảo trì thử lại.
+
+## Check-in
+
+`BookingCheckIn` là con của `Booking`, mỗi dòng là một lần quét. `Booking.checkIn` giữ mọi quy tắc: chỉ `CONFIRMED`, trong `CheckInWindow`, tổng số người không vượt số ghế. Use case khóa dòng booking theo mã, nên hai máy quét cùng lúc lần lượt chạy.
+
+Giờ chiếu đọc từ bản sao vé. Booking cũ không có bản sao thì `CheckInUseCase` hỏi showtime-service trước khi mở transaction.
+
+Mã QR vẽ qua port `QrCodeRenderer`, nên `application` không phụ thuộc ZXing.
 
 ## Combo
 

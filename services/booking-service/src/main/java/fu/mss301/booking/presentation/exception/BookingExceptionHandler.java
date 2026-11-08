@@ -7,6 +7,8 @@ import fu.mss301.booking.application.exception.InvalidWebhookException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
 import fu.mss301.booking.application.exception.RefundNotFoundException;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
+import fu.mss301.booking.application.booking.CheckInView;
+import fu.mss301.booking.application.exception.TicketAlreadyUsedException;
 import fu.mss301.booking.application.exception.UpstreamServiceException;
 import fu.mss301.booking.application.exception.VoucherNotFoundException;
 import fu.mss301.booking.domain.shared.DomainException;
@@ -44,6 +46,13 @@ public class BookingExceptionHandler {
         ComboUnavailableException.class, VoucherCodeTakenException.class})
     ResponseEntity<ApiResponse<String>> conflict(RuntimeException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    /** Carries the earlier scans, so door staff see when the ticket was used. */
+    @ExceptionHandler(TicketAlreadyUsedException.class)
+    ResponseEntity<ApiResponse<CheckInView>> alreadyUsed(TicketAlreadyUsedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ApiResponse<>(HttpStatus.CONFLICT.value(), exception.getMessage(), exception.booking()));
     }
 
     @ExceptionHandler({OptimisticLockingFailureException.class, PessimisticLockingFailureException.class})

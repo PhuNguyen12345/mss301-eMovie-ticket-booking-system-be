@@ -100,7 +100,7 @@ class DomainEventPublishingTests {
             NOW.minusMinutes(10), Duration.ofMinutes(5));
         return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
             held.totalAmount(), held.discountAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(),
-            held.combos(), held.vouchers());
+            held.combos(), held.vouchers(), held.checkIns());
     }
 
     private static PaymentTransaction pendingPayment() {

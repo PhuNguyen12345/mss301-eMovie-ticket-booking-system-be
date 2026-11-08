@@ -14,5 +14,9 @@ public interface BookingRepository {
     /** Loads the aggregate with a row lock so concurrent confirm/expire/cancel are serialized. */
     Optional<Booking> findByIdForUpdate(Integer id);
 
+    Optional<Booking> findByCode(String bookingCode);
+
+    Optional<Booking> findByCodeForUpdate(String bookingCode);
+
     List<Integer> findOverdueIds(LocalDateTime now, int limit);
 }
