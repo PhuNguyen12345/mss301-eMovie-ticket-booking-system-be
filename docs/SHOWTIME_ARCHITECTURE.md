@@ -17,11 +17,12 @@ fu.mss301.showtime
     usecase/        Scheduling, rescheduling, cancellation, queries and pricing
     dto/            Framework-free commands, views, search and pagination
     port/           MovieCatalog, CinemaCatalog, ScreenSchedule,
-                    ShowtimeQueries and Transactions
+                    ShowtimeQueries, BookingNotifier and Transactions
     exception/      Missing resources and unavailable upstream dependencies
   infrastructure/
     persistence/    JPA entities, Spring Data repositories, mapping and adapters
-    client/         Feign clients and validated catalog adapters
+    client/         Feign clients, validated catalog adapters and the
+                    booking notifier
     config/         Spring transaction adapter, Clock and use-case wiring
   presentation/
     controller/     HTTP binding and shared ApiResponse envelope
@@ -55,6 +56,20 @@ uses two Spring Data repositories to map the existing tables; these are
 technical persistence details and are never injected into application code.
 No schema migration is needed for the refactor. No domain event is introduced
 because no existing workflow requires a cross-aggregate reaction.
+
+## Notifying booking-service of a cancellation
+
+After the cancellation transaction commits, `ShowtimeServiceImpl` calls the
+`BookingNotifier` port. `FeignBookingNotifier` sends
+`POST /internal/showtimes/{id}/cancellation` to booking-service on a virtual
+thread, so the admin's cancel request does not wait for every booking to be
+handled (the Feign read timeout for booking-service is 60 seconds). A failure
+is only logged as `WARN`: the showtime stays cancelled, booking-service checks
+the showtime status itself and handles a repeated call without compensating
+twice, and admins re-run it with
+`POST /api/bookings/showtimes/{id}/cancellation`. Cancelling an already
+cancelled show notifies again. Set `BOOKING_SERVICE_URL` to bypass Eureka, as
+the smoke stack does with the contract stub.
 
 ## Transactions and concurrency
 

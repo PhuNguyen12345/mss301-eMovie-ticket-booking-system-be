@@ -156,9 +156,18 @@ for path in ['/api/showtimes/no-id', '/api/showtimes?status=WRONG', '/api/showti
 call('POST', '/api/showtimes', 400, auth=admin, body={})
 call('POST', f'/api/showtimes/{show_id}/cancel', auth=admin)
 call('POST', f'/api/showtimes/{show_id}/cancel', auth=admin)
+notified = []
+for _ in range(50):
+    with urllib.request.urlopen(os.environ['STUB_URL'] + '/recorded/internal', timeout=5) as response:
+        notified = json.load(response)['data']
+    if notified.count(f'/internal/showtimes/{show_id}/cancellation') == 2:
+        break
+    time.sleep(0.2)
+assert notified.count(f'/internal/showtimes/{show_id}/cancellation') == 2, notified
+CHECKS += 1
 call('PUT', f'/api/showtimes/{show_id}', 409, auth=admin, body=show())
 call('POST', '/api/showtimes', 201, auth=admin, body=show())
-print('PASS: real Movie + Showtime + MySQL CRUD, validation, filters, overlap and cancellation', flush=True)
+print('PASS: real Movie + Showtime + MySQL CRUD, validation, filters, overlap, cancellation and booking notification', flush=True)
 
 
 def race(_):

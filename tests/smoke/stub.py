@@ -1,5 +1,10 @@
 import json
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# Paths of the internal calls received, so the smoke check can see that showtime-service notified booking-service.
+INTERNAL_CALLS = []
+LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -7,6 +12,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/api/payments/disconnect':
             self.close_connection = True
             return
+        if self.path == '/recorded/internal':
+            with LOCK:
+                return self.respond(200, list(INTERNAL_CALLS))
         if self.path.startswith('/api/screens/'):
             screen_id = int(self.path.rsplit('/', 1)[1])
             data = {'id': screen_id, 'cinemaId': 1, 'status': 'ACTIVE'}
@@ -26,6 +34,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get('Content-Length', 0)))
+        if self.path.startswith('/internal/showtimes/'):
+            with LOCK:
+                INTERNAL_CALLS.append(self.path)
+            showtime_id = int(self.path.split('/')[3])
+            return self.respond(200, {'showtimeId': showtime_id, 'cancelledPending': 0, 'cancelledPaid': 0, 'failed': 0})
         self.respond(200, {'method': self.command, 'path': self.path, 'headers': dict(self.headers)})
 
     def respond(self, status, data):

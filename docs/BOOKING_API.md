@@ -454,7 +454,7 @@ Hai máy quét cùng lúc thì lần lượt được xử lý, tổng số ngư
 
 ### 2.12 Suất chiếu bị hủy
 
-Khi admin hủy suất chiếu (`POST /api/showtimes/{id}/cancel`), booking-service xử lý mọi booking của suất đó:
+Khi admin hủy suất chiếu (`POST /api/showtimes/{id}/cancel`), showtime-service gọi `POST /internal/showtimes/{id}/cancellation` của booking-service ngay sau khi lưu. Booking-service xử lý mọi booking của suất đó:
 
 | Booking | Xử lý |
 | --- | --- |
@@ -482,7 +482,7 @@ Khi admin hủy suất chiếu (`POST /api/showtimes/{id}/cancel`), booking-serv
 {"showtimeId": 34, "cancelledPending": 1, "cancelledPaid": 1, "failed": 0}
 ```
 
-Suất chưa bị hủy trả 409. Showtime-service sẽ tự gọi bước này sau khi hủy suất. Job bảo trì cũng bù tiếp những booking đã chuyển `SHOWTIME_CANCELLED` nhưng chưa bù xong.
+Suất chưa bị hủy trả 409. Showtime-service gọi booking-service ở luồng nền, nên API hủy suất không chờ xử lý booking. Nếu lời gọi lỗi, ví dụ booking-service đang tắt, suất vẫn được hủy, showtime-service chỉ ghi log `WARN` và admin chạy lại bằng API trên. Hủy lại một suất đã hủy cũng gọi lại booking-service. Job bảo trì bù tiếp những booking đã chuyển `SHOWTIME_CANCELLED` nhưng chưa bù xong.
 
 ## 3. State machine
 

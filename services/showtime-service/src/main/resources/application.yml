@@ -23,6 +23,10 @@ spring:
           default:
             connectTimeout: 2000
             readTimeout: 3000
+          # Handling every booking of a cancelled showtime takes longer than a lookup; it runs in the background.
+          booking-service:
+            connectTimeout: 2000
+            readTimeout: 60000
 
 eureka:
   client:
@@ -36,6 +40,7 @@ showtime:
   clients:
     movie-url: ${MOVIE_SERVICE_URL:}
     cinema-url: ${CINEMA_SERVICE_URL:}
+    booking-url: ${BOOKING_SERVICE_URL:}
 
 management:
   endpoints:

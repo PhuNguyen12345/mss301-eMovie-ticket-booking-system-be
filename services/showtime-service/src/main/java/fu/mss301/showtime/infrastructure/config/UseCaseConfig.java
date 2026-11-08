@@ -11,8 +11,9 @@ import java.time.Clock;
 public class UseCaseConfig {
     @Bean
     ShowtimeService showtimeService(ShowtimeRepository showtimes, ShowtimeQueries queries, ScreenSchedule screens,
-            MovieCatalog movies, CinemaCatalog cinemas, Transactions transactions, Clock clock) {
-        return new ShowtimeServiceImpl(showtimes, queries, screens, movies, cinemas, transactions, clock);
+            MovieCatalog movies, CinemaCatalog cinemas, BookingNotifier bookings, Transactions transactions,
+            Clock clock) {
+        return new ShowtimeServiceImpl(showtimes, queries, screens, movies, cinemas, bookings, transactions, clock);
     }
 
     @Bean
