@@ -15,7 +15,8 @@ final class VoucherMapper {
             entity.getComboId());
         var claim = entity.getClaim();
         return Voucher.restore(entity.getId(), new VoucherCode(entity.getCode()), terms, entity.getStatus(),
-            entity.getVersion(), entity.getCreatedAt(), entity.getUpdatedAt(), claim == null ? null : toDomain(claim));
+            entity.getVersion(), entity.getCreatedAt(), entity.getUpdatedAt(), claim == null ? null : toDomain(claim),
+            entity.getSourcePaymentId(), entity.getSourceBookingId());
     }
 
     static void update(Voucher voucher, VoucherEntity entity) {
@@ -30,6 +31,8 @@ final class VoucherMapper {
         entity.setSeatTypeId(terms.seatTypeId());
         entity.setComboId(terms.comboId());
         entity.setStatus(voucher.status());
+        entity.setSourcePaymentId(voucher.sourcePaymentId());
+        entity.setSourceBookingId(voucher.sourceBookingId());
         entity.setCreatedAt(voucher.createdAt());
         entity.setUpdatedAt(voucher.updatedAt());
         if (voucher.claim() != null) update(voucher.claim(), entity);

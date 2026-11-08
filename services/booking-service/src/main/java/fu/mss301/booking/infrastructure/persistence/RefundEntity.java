@@ -1,5 +1,6 @@
 package fu.mss301.booking.infrastructure.persistence;
 
+import fu.mss301.booking.domain.payment.RefundMethod;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -28,6 +29,13 @@ public class RefundEntity {
 
     @Column(name = "reason")
     private String reason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "method", nullable = false, updatable = false, length = 20)
+    private RefundMethod method;
+
+    @Column(name = "voucher_id", updatable = false)
+    private Integer voucherId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

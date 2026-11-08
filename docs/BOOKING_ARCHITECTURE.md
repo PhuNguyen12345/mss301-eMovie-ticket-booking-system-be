@@ -115,6 +115,20 @@ Toàn bộ quy tắc tính tiền nằm ở `VoucherPricing`, dùng chung cho á
 
 Đơn 0đ được `InitiatePaymentUseCase` xác nhận trong transaction chỉ ghi booking, không tạo `PaymentTransaction`.
 
+### Voucher giá trị
+
+`ValueVoucherIssuer` phát voucher giá trị và chỉ phát một lần cho mỗi nguồn. Gọi lại với cùng payment hoặc booking thì trả voucher đã có. Hai lần chạy cùng lúc thì `UNIQUE` ở DB chặn lần sau, và lần đó đọc lại voucher của lần trước.
+
+Tiền về mà không xuất được vé, `PaymentSettlementService.settle` chạy 3 transaction:
+
+1. Khóa booking, xác định không giữ payment này.
+2. Phát voucher giá trị cho chủ booking.
+3. Khóa payment, `compensateWithVoucher(voucherId)`: thêm refund `VOUCHER` đã `COMPLETED`, payment `REFUNDED`.
+
+Dừng giữa bước 2 và 3 thì job đối soát chạy lại `settle` và dùng lại voucher đã phát.
+
+Phần dư được phát trong `VoucherReservations.settle` **trước** khi đánh dấu voucher cũ `USED`. Nếu phát lỗi, voucher cũ vẫn `RESERVED` và job bảo trì thử lại.
+
 ## Combo
 
 `Combo` là aggregate riêng, `Booking` chỉ giữ `comboId` và bản sao đơn giá. `PUT /api/bookings/{id}/combos` chỉ ghi vào `Booking`, còn `Combo` chỉ được đọc, nên vẫn giữ quy tắc 1 transaction ghi 1 aggregate.

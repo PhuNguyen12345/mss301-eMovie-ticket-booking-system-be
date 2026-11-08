@@ -3,6 +3,7 @@ package fu.mss301.booking.domain.voucher;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -16,9 +17,14 @@ public final class Voucher {
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private VoucherClaim claim;
+    /** The payment a value voucher gives back, or null. */
+    private final Integer sourcePaymentId;
+    /** The booking whose value voucher was not used up, or null. */
+    private final Integer sourceBookingId;
 
     private Voucher(Integer id, VoucherCode code, VoucherTerms terms, VoucherStatus status, Integer version,
-                    LocalDateTime createdAt, LocalDateTime updatedAt, VoucherClaim claim) {
+                    LocalDateTime createdAt, LocalDateTime updatedAt, VoucherClaim claim, Integer sourcePaymentId,
+                    Integer sourceBookingId) {
         this.id = id;
         this.code = code;
         this.terms = terms;
@@ -27,19 +33,48 @@ public final class Voucher {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.claim = claim;
+        this.sourcePaymentId = sourcePaymentId;
+        this.sourceBookingId = sourceBookingId;
     }
 
     public static Voucher create(VoucherCode code, VoucherTerms terms, LocalDateTime now) {
         if (code == null) throw new DomainException("Voucher code is required");
         if (terms == null) throw new DomainException("Voucher terms are required");
         requireAdminKind(terms);
-        return new Voucher(null, code, terms, VoucherStatus.ACTIVE, null, now, now, null);
+        return new Voucher(null, code, terms, VoucherStatus.ACTIVE, null, now, now, null, null, null);
+    }
+
+    /** A value voucher for money received for a booking that could not be confirmed with it. */
+    public static Voucher forPayment(VoucherCode code, Integer ownerId, BigDecimal amount, Integer paymentId,
+                                     LocalDate lastDay, LocalDateTime now) {
+        if (paymentId == null) throw new DomainException("Payment id is required");
+        return issueValue(code, ownerId, amount, lastDay, now, paymentId, null);
+    }
+
+    /** A value voucher for what a booking's value voucher did not use. */
+    public static Voucher forRemainder(VoucherCode code, Integer ownerId, BigDecimal amount, Integer bookingId,
+                                       LocalDate lastDay, LocalDateTime now) {
+        if (bookingId == null) throw new DomainException("Booking id is required");
+        return issueValue(code, ownerId, amount, lastDay, now, null, bookingId);
+    }
+
+    /** Value vouchers are issued by the system straight to their owner. */
+    private static Voucher issueValue(VoucherCode code, Integer ownerId, BigDecimal amount, LocalDate lastDay,
+                                      LocalDateTime now, Integer paymentId, Integer bookingId) {
+        if (code == null) throw new DomainException("Voucher code is required");
+        if (ownerId == null || ownerId <= 0) throw new DomainException("User id must be positive");
+        var terms = new VoucherTerms(VoucherKind.VALUE, DiscountType.FIXED, amount, now.toLocalDate(), lastDay, null,
+            null, null);
+        return new Voucher(null, code, terms, VoucherStatus.ACTIVE, null, now, now, VoucherClaim.of(ownerId, now),
+            paymentId, bookingId);
     }
 
     /** Rebuilds a stored voucher; performs no business validation. */
     public static Voucher restore(Integer id, VoucherCode code, VoucherTerms terms, VoucherStatus status,
-                                  Integer version, LocalDateTime createdAt, LocalDateTime updatedAt, VoucherClaim claim) {
-        return new Voucher(id, code, terms, status, version, createdAt, updatedAt, claim);
+                                  Integer version, LocalDateTime createdAt, LocalDateTime updatedAt, VoucherClaim claim,
+                                  Integer sourcePaymentId, Integer sourceBookingId) {
+        return new Voucher(id, code, terms, status, version, createdAt, updatedAt, claim, sourcePaymentId,
+            sourceBookingId);
     }
 
     /** Terms are frozen once someone owns the code, so a customer's voucher never changes under them. */
@@ -147,6 +182,8 @@ public final class Voucher {
     public LocalDateTime createdAt() { return createdAt; }
     public LocalDateTime updatedAt() { return updatedAt; }
     public VoucherClaim claim() { return claim; }
+    public Integer sourcePaymentId() { return sourcePaymentId; }
+    public Integer sourceBookingId() { return sourceBookingId; }
 
     /** Optimistic-lock token owned by persistence; the domain never interprets it. */
     public Integer version() { return version; }

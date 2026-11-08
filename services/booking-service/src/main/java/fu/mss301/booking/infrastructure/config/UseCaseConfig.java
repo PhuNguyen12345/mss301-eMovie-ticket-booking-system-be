@@ -10,6 +10,7 @@ import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.booking.ApplyVoucherUseCase;
 import fu.mss301.booking.application.policy.VoucherEventPolicy;
+import fu.mss301.booking.application.voucher.ValueVoucherIssuer;
 import fu.mss301.booking.application.voucher.VoucherReservations;
 import fu.mss301.booking.application.voucher.VoucherService;
 import fu.mss301.booking.application.port.VoucherQueries;
@@ -82,8 +83,15 @@ public class UseCaseConfig {
 
     @Bean
     PaymentSettlementService paymentSettlementService(PaymentRepository payments, BookingRepository bookings,
-                                                      Transactions transactions, DomainEvents events, Clock clock) {
-        return new PaymentSettlementService(payments, bookings, transactions, events, clock);
+                                                      Transactions transactions, DomainEvents events,
+                                                      ValueVoucherIssuer valueVouchers, Clock clock) {
+        return new PaymentSettlementService(payments, bookings, transactions, events, valueVouchers, clock);
+    }
+
+    @Bean
+    ValueVoucherIssuer valueVoucherIssuer(VoucherRepository vouchers, Transactions transactions,
+                                          BookingProperties properties, Clock clock) {
+        return new ValueVoucherIssuer(vouchers, transactions, properties.valueVoucherTtl(), clock);
     }
 
     @Bean
@@ -118,9 +126,10 @@ public class UseCaseConfig {
 
     @Bean
     VoucherReservations voucherReservations(VoucherRepository vouchers, BookingRepository bookings,
-                                            Transactions transactions, HoldPolicy policy, Clock clock) {
+                                            Transactions transactions, ValueVoucherIssuer valueVouchers,
+                                            HoldPolicy policy, Clock clock) {
         // A booking holds a voucher at most as long as it holds its seats.
-        return new VoucherReservations(vouchers, bookings, transactions, policy.holdTtl(), clock);
+        return new VoucherReservations(vouchers, bookings, transactions, valueVouchers, policy.holdTtl(), clock);
     }
 
     @Bean

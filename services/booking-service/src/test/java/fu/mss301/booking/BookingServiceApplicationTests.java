@@ -51,6 +51,7 @@ import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.combo.ComboStatus;
 import fu.mss301.booking.domain.payment.PaymentStatus;
+import fu.mss301.booking.domain.payment.RefundMethod;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 import jakarta.persistence.EntityManagerFactory;
@@ -296,7 +297,7 @@ class BookingServiceApplicationTests {
     }
 
     @Test
-    void expiryReleasesSeatsAndLatePaymentIsFlaggedForRefund() {
+    void expiryReleasesSeatsAndLatePaymentBecomesAVoucher() {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
 
@@ -315,11 +316,12 @@ class BookingServiceApplicationTests {
         webhook.handle(Map.of());
 
         assertEquals(BookingStatus.EXPIRED, queries.getBooking(7, false, booking.id()).status());
-        var refund = refunds.list(RefundStatus.PENDING).stream()
-            .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
-        var completed = refunds.complete(refund.id());
-        assertEquals(RefundStatus.COMPLETED, completed.status());
         assertEquals("REFUNDED", queries.getBooking(7, false, booking.id()).payment().status());
+        var refund = refunds.list(RefundStatus.COMPLETED).stream()
+            .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
+        assertEquals(RefundMethod.VOUCHER, refund.method());
+        assertEquals(new BigDecimal("90000.00"), voucherService.get(refund.voucherId()).discountValue());
+        assertTrue(refunds.list(RefundStatus.PENDING).stream().noneMatch(r -> r.bookingId().equals(booking.id())));
     }
 
     @Test
@@ -359,14 +361,15 @@ class BookingServiceApplicationTests {
     }
 
     @Test
-    void refundRowKeepsItsIdWhenCompleted() {
+    void aManualRefundRecordedEarlierIsCompletedByHandAndKeepsItsId() {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
-        clock.advance(Duration.ofMinutes(6));
-        expireOverdue.expireOverdue(1000);
         when(gateway.verifyWebhook(any())).thenReturn(
             new VerifiedPayment(payment.orderCode(), 90000, true, "FT5", LocalDateTime.now(clock)));
         webhook.handle(Map.of());
+        // Before late payments became vouchers, they were left as pending manual refunds.
+        jdbc.update("insert into refunds (payment_id, amount, reason, method, status, created_at, updated_at) "
+            + "values (?, 90000, 'late', 'MANUAL', 'PENDING', now(6), now(6))", payment.id());
 
         var refund = refunds.list(RefundStatus.PENDING).stream()
             .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();

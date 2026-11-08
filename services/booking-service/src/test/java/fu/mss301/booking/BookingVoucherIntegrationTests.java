@@ -14,7 +14,12 @@ import fu.mss301.booking.application.combo.ComboService;
 import fu.mss301.booking.application.exception.VoucherNotFoundException;
 import fu.mss301.booking.application.payment.HandlePayosWebhookUseCase;
 import fu.mss301.booking.application.payment.InitiatePaymentUseCase;
+import fu.mss301.booking.application.payment.PaymentSettlementService;
 import fu.mss301.booking.application.payment.PaymentView;
+import fu.mss301.booking.application.payment.ReconcilePaymentUseCase;
+import fu.mss301.booking.application.exception.PaymentGatewayException;
+import fu.mss301.booking.application.voucher.ValueVoucherIssuer;
+import fu.mss301.booking.domain.voucher.VoucherAvailability;
 import fu.mss301.booking.application.port.CinemaCatalog;
 import fu.mss301.booking.application.port.MovieCatalog;
 import fu.mss301.booking.application.port.PaymentGateway;
@@ -88,6 +93,9 @@ class BookingVoucherIntegrationTests {
     @Autowired private ReplaceBookingCombosUseCase replaceCombos;
     @Autowired private ComboService comboService;
     @Autowired private BookingQueryService queries;
+    @Autowired private PaymentSettlementService settlement;
+    @Autowired private ReconcilePaymentUseCase reconcile;
+    @Autowired private ValueVoucherIssuer valueVouchers;
     @Autowired private MutableClock clock;
     @Autowired private JdbcTemplate jdbc;
 
@@ -354,6 +362,117 @@ class BookingVoucherIntegrationTests {
         assertEquals("USED", claimStatus(paidCode));
         assertEquals("AVAILABLE", claimStatus(strandedCode));
         assertEquals("RESERVED", claimStatus(heldCode), "a pending booking still holds its voucher");
+    }
+
+    @Test
+    void aLatePaymentBecomesOneValueVoucherForTheCustomer() {
+        var booking = holdSeats.hold(user, showtimeId, List.of(101, 102));
+        var payment = initiatePayment.initiate(user, booking.id());
+        clock.advance(Duration.ofMinutes(6));
+        expireOverdue.expireOverdue(1000);
+        payLate(payment.orderCode(), 240000);
+        payLate(payment.orderCode(), 240000);
+        settlement.settle(payment.id(), booking.id());
+
+        var given = voucherService.mine(user).stream().filter(v -> v.kind() == VoucherKind.VALUE).toList();
+        assertEquals(1, given.size());
+        var voucher = given.getFirst();
+        assertEquals(new BigDecimal("240000.00"), voucher.discountValue());
+        assertEquals(LocalDate.now(clock), voucher.startDate());
+        assertEquals(LocalDate.now(clock).plusDays(89), voucher.endDate());
+        assertEquals(VoucherAvailability.AVAILABLE, voucher.status());
+        assertEquals(payment.id(), voucherService.get(voucher.id()).sourcePaymentId());
+        assertEquals("REFUNDED", queries.getBooking(user, false, booking.id()).payment().status());
+        assertEquals(List.of("VOUCHER:COMPLETED:" + voucher.id()), jdbc.queryForList(
+            "select concat(method, ':', status, ':', voucher_id) from refunds where payment_id = ?", String.class,
+            payment.id()));
+    }
+
+    @Test
+    void aSecondPaymentForAPaidBookingBecomesAVoucher() {
+        var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        doThrow(new PaymentGatewayException("down", null)).when(gateway).createLink(any());
+        assertThrows(PaymentGatewayException.class, () -> initiatePayment.initiate(user, booking.id()));
+        doAnswer(invocation -> {
+            LinkRequest request = invocation.getArgument(0);
+            return new CheckoutLink("link-" + request.orderCode(), "https://pay.payos.vn/web/" + request.orderCode());
+        }).when(gateway).createLink(any());
+        var second = initiatePayment.initiate(user, booking.id());
+
+        payLate(booking.id() * 100L + 1, 90000);
+        assertEquals(BookingStatus.CONFIRMED, queries.getBooking(user, false, booking.id()).status());
+        payLate(second.orderCode(), 90000);
+
+        assertEquals(1, jdbc.queryForObject("select count(*) from vouchers where source_payment_id = ?", Integer.class,
+            second.id()));
+        assertEquals("REFUNDED", jdbc.queryForObject("select status from payment_transactions where id = ?",
+            String.class, second.id()));
+        assertEquals("SUCCESS", jdbc.queryForObject("select status from payment_transactions where order_code = ?",
+            String.class, booking.id() * 100L + 1));
+    }
+
+    @Test
+    void theJobFinishesAGiveBackThatStoppedAfterTheVoucherWasIssued() {
+        var booking = holdSeats.hold(user, showtimeId, List.of(101));
+        var payment = initiatePayment.initiate(user, booking.id());
+        cancelBooking.cancel(user, booking.id());
+        // As if the service stopped right after issuing the voucher: the payment is paid but not yet given back.
+        jdbc.update("update payment_transactions set status = 'SUCCESS', paid_at = now(6) where id = ?", payment.id());
+        var issued = valueVouchers.forPayment(payment.id(), user, new BigDecimal("90000"));
+
+        reconcile.settleUnsettled(1000);
+        assertEquals("REFUNDED", jdbc.queryForObject("select status from payment_transactions where id = ?",
+            String.class, payment.id()));
+        assertEquals(issued.id(), jdbc.queryForObject("select voucher_id from refunds where payment_id = ?",
+            Integer.class, payment.id()));
+        assertEquals(1, jdbc.queryForObject("select count(*) from vouchers where source_payment_id = ?", Integer.class,
+            payment.id()));
+    }
+
+    @Test
+    void whatAValueVoucherDoesNotUseComesBackAsANewVoucher() {
+        var value = valueVouchers.forPayment(latePayment(), user, new BigDecimal("240000"));
+        var booking = holdSeats.hold(user, showtimeId, List.of(104));
+        assertEquals(new BigDecimal("0.00"), vouchers.apply(user, booking.id(), value.code().value(), null).totalAmount());
+        assertEquals(PaymentView.NOT_REQUIRED, initiatePayment.initiate(user, booking.id()).status());
+
+        assertEquals("USED", claimStatus(value.code().value()));
+        var rest = voucherService.mine(user).stream()
+            .filter(v -> v.kind() == VoucherKind.VALUE && v.status() == VoucherAvailability.AVAILABLE).toList();
+        assertEquals(1, rest.size());
+        assertEquals(new BigDecimal("150000.00"), rest.getFirst().discountValue());
+        assertEquals(booking.id(), voucherService.get(rest.getFirst().id()).sourceBookingId());
+
+        reservations.settle(value.id(), booking.id());
+        assertEquals(1, jdbc.queryForObject("select count(*) from vouchers where source_booking_id = ?", Integer.class,
+            booking.id()));
+    }
+
+    @Test
+    void aValueVoucherUsedInFullLeavesNothingBehind() {
+        var value = valueVouchers.forPayment(latePayment(), user, new BigDecimal("50000"));
+        var booking = holdSeats.hold(user, showtimeId, List.of(104));
+        assertEquals(new BigDecimal("40000.00"), vouchers.apply(user, booking.id(), value.code().value(), null).totalAmount());
+        var payment = initiatePayment.initiate(user, booking.id());
+        payLate(payment.orderCode(), 40000);
+        assertEquals("USED", claimStatus(value.code().value()));
+        assertEquals(0, jdbc.queryForObject("select count(*) from vouchers where source_booking_id = ?", Integer.class,
+            booking.id()));
+    }
+
+    /** A paid payment on a cancelled booking of the test user, to be the source of a value voucher. */
+    private Integer latePayment() {
+        var booking = holdSeats.hold(user, showtimeId, List.of(102));
+        var payment = initiatePayment.initiate(user, booking.id());
+        cancelBooking.cancel(user, booking.id());
+        jdbc.update("update payment_transactions set status = 'SUCCESS', paid_at = now(6) where id = ?", payment.id());
+        return payment.id();
+    }
+
+    private void payLate(long orderCode, long amount) {
+        when(gateway.verifyWebhook(any())).thenReturn(
+            new VerifiedPayment(orderCode, amount, true, "FT" + orderCode, LocalDateTime.now(clock)));
+        webhook.handle(Map.of());
     }
 
     private void openShowtime() {

@@ -10,16 +10,21 @@ public final class Refund {
     private final Integer id;
     private final BigDecimal amount;
     private final String reason;
+    private final RefundMethod method;
+    /** The value voucher given instead of money, or null. */
+    private final Integer voucherId;
     private RefundStatus status;
     private LocalDateTime refundedAt;
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    private Refund(Integer id, BigDecimal amount, String reason, RefundStatus status, LocalDateTime refundedAt,
-                   LocalDateTime createdAt, LocalDateTime updatedAt) {
+    private Refund(Integer id, BigDecimal amount, String reason, RefundMethod method, Integer voucherId,
+                   RefundStatus status, LocalDateTime refundedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.amount = amount;
         this.reason = reason;
+        this.method = method;
+        this.voucherId = voucherId;
         this.status = status;
         this.refundedAt = refundedAt;
         this.createdAt = createdAt;
@@ -27,13 +32,19 @@ public final class Refund {
     }
 
     static Refund request(BigDecimal amount, String reason, LocalDateTime now) {
-        return new Refund(null, amount, reason, RefundStatus.PENDING, null, now, now);
+        return new Refund(null, amount, reason, RefundMethod.MANUAL, null, RefundStatus.PENDING, null, now, now);
+    }
+
+    /** Given back as a value voucher, so it is done at once. */
+    static Refund byVoucher(BigDecimal amount, String reason, Integer voucherId, LocalDateTime now) {
+        return new Refund(null, amount, reason, RefundMethod.VOUCHER, voucherId, RefundStatus.COMPLETED, now, now, now);
     }
 
     /** Rebuilds a stored refund; performs no business validation. */
-    public static Refund restore(Integer id, BigDecimal amount, String reason, RefundStatus status,
-                                 LocalDateTime refundedAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
-        return new Refund(id, amount, reason, status, refundedAt, createdAt, updatedAt);
+    public static Refund restore(Integer id, BigDecimal amount, String reason, RefundMethod method, Integer voucherId,
+                                 RefundStatus status, LocalDateTime refundedAt, LocalDateTime createdAt,
+                                 LocalDateTime updatedAt) {
+        return new Refund(id, amount, reason, method, voucherId, status, refundedAt, createdAt, updatedAt);
     }
 
     void complete(LocalDateTime now) {
@@ -52,6 +63,8 @@ public final class Refund {
     public Integer id() { return id; }
     public BigDecimal amount() { return amount; }
     public String reason() { return reason; }
+    public RefundMethod method() { return method; }
+    public Integer voucherId() { return voucherId; }
     public RefundStatus status() { return status; }
     public LocalDateTime refundedAt() { return refundedAt; }
     public LocalDateTime createdAt() { return createdAt; }

@@ -80,7 +80,7 @@ class DomainEventPublishingTests {
     @Test
     void settlementPublishesBookingConfirmed() {
         when(bookings.findByIdForUpdate(42)).thenReturn(Optional.of(pending(NOW.plusMinutes(5))));
-        new PaymentSettlementService(payments, bookings, transactions, events, CLOCK).settle(5, 42);
+        new PaymentSettlementService(payments, bookings, transactions, events, null, CLOCK).settle(5, 42);
         assertEquals(List.of(new BookingConfirmed(42)), published);
     }
 
@@ -88,7 +88,7 @@ class DomainEventPublishingTests {
     void recordingSuccessPublishesPaymentSucceededOnlyTheFirstTime() {
         var payment = pendingPayment();
         when(payments.findByOrderCodeForUpdate(4201L)).thenReturn(Optional.of(payment));
-        var settlement = new PaymentSettlementService(payments, bookings, transactions, events, CLOCK);
+        var settlement = new PaymentSettlementService(payments, bookings, transactions, events, null, CLOCK);
         settlement.recordSuccess(4201L, 90000L, "FT1", NOW);
         settlement.recordSuccess(4201L, 90000L, "FT1", NOW);
         assertEquals(List.of(new PaymentSucceeded(5, 42)), published);

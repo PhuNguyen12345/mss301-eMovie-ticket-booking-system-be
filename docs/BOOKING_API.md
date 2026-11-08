@@ -204,7 +204,20 @@ Bảng `refunds` chỉ dùng cho **lỗi phía hệ thống**, khi tiền đã v
 - Tiền về sau khi booking đã `EXPIRED` hoặc `CANCELLED`.
 - Một booking được thanh toán thành công 2 lần.
 
-Hệ thống tự tạo `refunds` trạng thái `PENDING`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
+Số tiền này được trả lại cho khách bằng **voucher giá trị** (`VALUE`), không chuyển khoản:
+
+1. Hệ thống phát voucher bằng đúng số tiền đã nhận cho chủ booking, dùng được 90 ngày kể từ hôm nay (`BOOKING_VALUE_VOUCHER_TTL`). Khách thấy voucher ở `GET /api/vouchers/me`. Hệ thống chưa gửi email.
+2. Tạo `refunds` với `method: VOUCHER`, `voucherId`, trạng thái `COMPLETED` luôn, và payment chuyển `REFUNDED`.
+
+Mỗi payment chỉ ra tối đa một voucher, kể cả khi PayOS gửi webhook nhiều lần hoặc job đối soát chạy lại.
+
+```json
+{"id": 9, "paymentId": 39, "bookingId": 163, "orderCode": 16301, "amount": 240000.00,
+ "reason": "Booking 163 could not be confirmed with this payment, given back as voucher EMMY624MAUZT7R",
+ "method": "VOUCHER", "voucherId": 32, "status": "COMPLETED"}
+```
+
+Refund `PENDING` tạo trước thay đổi này có `method: MANUAL`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete`. Gọi API này với refund `VOUCHER` trả 409. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
 
 ### 2.7 Combo
 
@@ -282,7 +295,11 @@ curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:
 
 ### 2.9 Voucher
 
-Một mã thuộc một tài khoản và dùng một lần. Voucher giá trị (`VALUE`) do hệ thống phát ở bước sau, phần này chưa có.
+Một mã thuộc một tài khoản và dùng một lần. Voucher giá trị (`VALUE`) do hệ thống phát thẳng cho khách: khi tiền về mà không xuất được vé (mục 2.6), và khi voucher giá trị chưa dùng hết.
+
+**Phần dư của voucher giá trị.** Khi booking dùng voucher giá trị được thanh toán, phần chưa dùng thành một voucher giá trị mới cho cùng khách, hạn 90 ngày tính từ hôm đó. Ví dụ voucher 240.000đ trả cho đơn 90.000đ thì khách nhận thêm voucher 150.000đ. Mỗi booking ra tối đa một voucher phần dư.
+
+Admin xem nguồn của voucher giá trị qua `sourcePaymentId` (payment được trả lại) và `sourceBookingId` (booking để lại phần dư) trong `GET /api/vouchers/{id}`.
 
 | `kind` | Áp dụng cho |
 | --- | --- |
@@ -464,7 +481,7 @@ Nhánh hết hạn (job chạy mỗi `BOOKING_EXPIRY_SCAN_INTERVAL`, mặc đị
 3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED`. Link hủy được thì mới hủy: PayOS tự đóng link đúng giờ hết hạn và từ chối hủy link đã đóng (code `221`).
 
 Nhánh thanh toán trễ: tiền về sau khi booking đã `EXPIRED`/`CANCELLED` → payment vẫn ghi `SUCCESS` (không mất dấu tiền), booking giữ nguyên,
-tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được đưa vào hoàn tiền.
+khách nhận voucher giá trị bằng số tiền đó và payment chuyển `REFUNDED`. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được trả lại bằng voucher.
 
 ## 5. Concurrency, idempotency và tính nhất quán
 
@@ -474,7 +491,8 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | Webhook, job hết hạn, người dùng hủy chạy cùng lúc | Load aggregate bằng `SELECT ... FOR UPDATE` + cột `version` (optimistic lock). |
 | PayOS gửi webhook nhiều lần | `markSucceeded()` idempotent; `order_code` unique. |
 | 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event: use case publish qua port `DomainEvents`, listener ở `infrastructure` chạy policy sau commit. |
-| Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. |
+| Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. Nếu đã phát voucher mà chưa ghi refund, lần chạy lại dùng đúng voucher đó. |
+| Phát voucher giá trị 2 lần | `UNIQUE (source_payment_id)` và `UNIQUE (source_booking_id)` trên `vouchers`. |
 | Webhook không tới | Job hết hạn + endpoint `sync` chủ động hỏi PayOS. |
 | Gọi service khác | Feign gọi **ngoài** transaction DB; timeout 2s/3s; lỗi → 503. |
 | Một mã áp vào 2 booking cùng lúc | Khóa dòng `vouchers` khi giữ mã. Người sau thấy mã đang `RESERVED` → 409. |
@@ -491,6 +509,7 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | `BOOKING_MAX_SEATS` | `8` | Số ghế tối đa / booking |
 | `BOOKING_EXPIRY_SCAN_INTERVAL` | `PT30S` | Chu kỳ job hết hạn + đối soát |
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
+| `BOOKING_VALUE_VOUCHER_TTL` | `P90D` | Voucher giá trị dùng được bao nhiêu ngày, tính cả ngày phát |
 | `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
 | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
@@ -587,6 +606,8 @@ và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 | `vouchers.kind`, `seat_type_id`, `combo_id` | Loại voucher và điều kiện áp dụng |
 | `vouchers.version` | Optimistic locking (`@Version`) |
 | `user_vouchers.booking_id` | Booking đang giữ hoặc đã dùng voucher |
+| `vouchers.source_payment_id`, `source_booking_id` | Nguồn của voucher giá trị, `UNIQUE` để không phát trùng |
+| `refunds.method`, `voucher_id` | `MANUAL` là chuyển khoản tay, `VOUCHER` là trả bằng voucher. Refund cũ là `MANUAL` |
 | `booking_seats.seat_type_id` | Để voucher lọc theo loại ghế. `NULL` với booking cũ |
 | `bookings.discount_amount` | Tổng tiền voucher trừ. `total_amount` là số còn phải trả |
 | Bảng `booking_vouchers` | Voucher trên từng booking, kèm bản sao điều kiện và số tiền đang trừ. Bị xóa khi khách gỡ voucher, còn lại khi booking hủy hoặc hết hạn |
