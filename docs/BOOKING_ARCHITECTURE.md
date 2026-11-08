@@ -141,7 +141,7 @@ Mã QR vẽ qua port `QrCodeRenderer`, nên `application` không phụ thuộc Z
 
 ## Suất chiếu bị hủy
 
-`ShowtimeCancellationUseCase` hỏi showtime-service để chắc suất đã hủy, rồi gọi `Booking.cancelForShowtime` cho từng booking, mỗi booking một transaction. Booking chờ thanh toán phát `BookingCancelled`, nên các policy có sẵn đóng link PayOS và trả voucher. Booking đã thanh toán phát `BookingShowtimeCancelled`.
+Showtime-service gọi `POST /internal/showtimes/{id}/cancellation` sau khi transaction hủy suất commit. `ShowtimeCancellationUseCase` hỏi lại showtime-service để chắc suất đã hủy, rồi gọi `Booking.cancelForShowtime` cho từng booking, mỗi booking một transaction. Booking chờ thanh toán phát `BookingCancelled`, nên các policy có sẵn đóng link PayOS và trả voucher. Booking đã thanh toán phát `BookingShowtimeCancelled`.
 
 `ShowtimeCompensationPolicy` gọi `ShowtimeCompensationService.compensate`. `ShowtimeCompensation` trong domain tính số tiền, service chạy 4 bước, mỗi bước một transaction:
 
