@@ -19,7 +19,9 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | GET | `/api/bookings/{id}` | Chủ booking / ADMIN | Chi tiết booking + lần thanh toán gần nhất | 200 |
 | POST | `/api/bookings/{id}/cancel` | Chủ booking | Hủy booking đang chờ thanh toán, nhả ghế | 200 |
 | PUT | `/api/bookings/{id}/combos` | Chủ booking | Thay toàn bộ combo của booking, tính lại tổng tiền | 200 |
-| POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS | 200 |
+| POST | `/api/bookings/{id}/vouchers` | Chủ booking | Áp voucher, tính lại tổng tiền | 200 |
+| DELETE | `/api/bookings/{id}/vouchers/{voucherId}` | Chủ booking | Gỡ voucher, trả lại lượt dùng | 200 |
+| POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS. Đơn 0đ được xác nhận luôn | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
 | GET | `/api/payments/refunds?status=PENDING` | ADMIN | Danh sách yêu cầu hoàn tiền | 200 |
@@ -105,6 +107,8 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
     "userId": 7,
     "showtimeId": 15,
     "status": "PENDING_PAYMENT",
+    "subtotal": 240000.00,
+    "discountAmount": 0.00,
     "totalAmount": 240000.00,
     "bookingTime": "2027-01-20T18:00:00",
     "expiredAt": "2027-01-20T18:05:00",
@@ -121,6 +125,7 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
       {"seatId": 102, "rowCode": "C", "seatNumber": 1, "seatTypeName": "Ghế VIP", "price": 150000.00, "status": "HELD"}
     ],
     "combos": [],
+    "vouchers": [],
     "payment": null
   }
 }
@@ -147,6 +152,20 @@ Booking tạo trước khi có tính năng này trả `ticket: null`, các field
 - Chỉ khi booking `PENDING_PAYMENT` và chưa quá `expiredAt`.
 - Nếu đã có link đang chờ thanh toán → trả lại link cũ (gọi nhiều lần không tạo link mới).
 - `orderCode = bookingId * 100 + số lần thử` (tối đa 99 lần), link PayOS hết hạn cùng lúc với booking.
+- Voucher đã qua ngày cuối được gỡ trước khi tạo link, nên số tiền có thể cao hơn lúc khách áp mã. Link đã mở thì giữ giá.
+- Voucher trả hết tiền (`totalAmount` = 0): booking chuyển `CONFIRMED` ngay, không tạo link và không có dòng thanh toán. Response khi đó:
+
+```json
+{
+  "status": 200,
+  "message": "Booking confirmed, vouchers cover the whole amount",
+  "data": {"id": null, "bookingId": 12, "orderCode": null, "provider": null, "amount": 0.00,
+           "status": "NOT_REQUIRED", "checkoutUrl": null, "paidAt": null}
+}
+```
+
+Booking đó có `payment: null`. FE kiểm tra `status` để không redirect sang PayOS.
+- Số tiền phải trả phải là 0 hoặc từ 2.000đ, vì ngân hàng không nhận chuyển khoản nhỏ hơn. Nếu bớt combo làm tổng còn từ 1đ đến 1.999đ thì trả 400 và không tạo link, khách cần gỡ voucher hoặc thêm combo.
 
 ```json
 {
@@ -263,7 +282,7 @@ curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:
 
 ### 2.9 Voucher
 
-Một mã thuộc một tài khoản và dùng một lần. Phần này mới gồm quản lý và nhận mã, chưa áp được vào booking.
+Một mã thuộc một tài khoản và dùng một lần. Voucher giá trị (`VALUE`) do hệ thống phát ở bước sau, phần này chưa có.
 
 | `kind` | Áp dụng cho |
 | --- | --- |
@@ -316,6 +335,67 @@ Voucher đã có chủ thì không sửa được, để giá trị của khách
 | 403 | Khách gọi API quản lý |
 | 404 | Không có voucher hoặc combo. `claim` cũng trả 404 khi mã đã có chủ, đã tắt hoặc hết hạn, để không lộ mã nào có thật |
 | 409 | Trùng `code`, sửa voucher đã có chủ, gán voucher đã có chủ, đã tắt hoặc hết hạn |
+
+### 2.10 Áp voucher vào booking
+
+`POST /api/bookings/{id}/vouchers`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `code` | string | Bắt buộc, không phân biệt hoa thường. Mã phải thuộc tài khoản đang đăng nhập |
+| `seatId` | number | Bắt buộc với `TICKET_EXCHANGE`: ghế được trả tiền. Các loại khác không gửi |
+
+```bash
+curl -X POST http://localhost:8080/api/bookings/12/vouchers \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"code": "EM7K2QXPLM4R9T", "seatId": 102}'
+```
+
+Trả về booking đã tính lại tiền:
+
+```json
+{
+  "subtotal": 240000.00,
+  "discountAmount": 150000.00,
+  "totalAmount": 90000.00,
+  "vouchers": [
+    {"voucherId": 9, "code": "EM7K2QXPLM4R9T", "kind": "TICKET_EXCHANGE", "seatId": 102, "comboId": null,
+     "discountAmount": 150000.00, "expiresOn": "2027-01-31"}
+  ]
+}
+```
+
+`subtotal` là tiền ghế cộng combo. `totalAmount = subtotal - discountAmount` là số tiền gửi sang PayOS.
+
+`DELETE /api/bookings/{id}/vouchers/{voucherId}` gỡ voucher, trả về booking và voucher quay lại `AVAILABLE`.
+
+**Cách tính.** Voucher được tính theo thứ tự cố định, nên tổng tiền không bao giờ âm:
+
+1. `TICKET_EXCHANGE`: trừ đúng giá ghế đã chọn. Mỗi ghế một mã, ghế phải đúng `seatTypeId` nếu voucher có.
+2. `TICKET_DISCOUNT`: trên tổng giá các ghế chưa được đổi. Nếu voucher có `seatTypeId` thì chỉ tính ghế loại đó.
+3. `COMBO_EXCHANGE`: trừ giá một suất của combo trên voucher. Số mã tối đa bằng số suất.
+4. `COMBO_DISCOUNT`: trên tiền combo còn lại sau bước 3.
+5. `VALUE`: trên số tiền còn lại.
+
+Sau khi áp, số còn phải trả phải là 0 hoặc từ 2.000đ, nếu không voucher bị từ chối. Giảm theo % làm tròn xuống đồng. Giảm cố định không vượt phần tiền nó được tính trên, phần dư mất. `minOrderAmount` so với đúng phần tiền đó, ví dụ `COMBO_DISCOUNT` so với tiền combo. Mỗi booking dùng tối đa một mã mỗi loại `TICKET_DISCOUNT`, `COMBO_DISCOUNT`, `VALUE`.
+
+**Khi combo thay đổi.** `PUT /api/bookings/{id}/combos` tính lại mọi voucher. Voucher không còn áp được sẽ tự gỡ và trả lại lượt: `COMBO_DISCOUNT` khi tiền combo dưới `minOrderAmount` hoặc hết combo, `COMBO_EXCHANGE` dư khi bớt suất. Response không còn voucher đó trong `vouchers`.
+
+**Vòng đời voucher của khách** (`GET /api/vouchers/me`):
+
+| Sự kiện | `status` |
+| --- | --- |
+| Áp vào booking | `RESERVED` |
+| Booking được thanh toán | `USED` |
+| Gỡ khỏi booking, booking bị hủy hoặc hết hạn | `AVAILABLE`. Voucher đã qua ngày cuối thì hiện `EXPIRED` |
+
+Chỉ áp hoặc gỡ được khi booking `PENDING_PAYMENT`, còn hạn giữ ghế và chưa có link thanh toán. Nếu tạo link lỗi, payment `FAILED` và có thể sửa voucher rồi thanh toán lại.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Thiếu `code`, số còn phải trả từ 1đ đến 1.999đ, voucher hết hạn hoặc chưa tới ngày, sai loại ghế, booking không có combo của voucher, chưa đủ `minOrderAmount`, đã có một mã cùng loại, voucher làm mã khác trên booking không còn đủ điều kiện |
+| 404 | Không có booking của tôi, mã không thuộc tôi, gỡ voucher không có trên booking |
+| 409 | Booking không còn chờ thanh toán, đã có link thanh toán, voucher đã dùng hoặc đang ở booking khác, voucher đã tắt |
 
 ## 3. State machine
 
@@ -397,6 +477,8 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. |
 | Webhook không tới | Job hết hạn + endpoint `sync` chủ động hỏi PayOS. |
 | Gọi service khác | Feign gọi **ngoài** transaction DB; timeout 2s/3s; lỗi → 503. |
+| Một mã áp vào 2 booking cùng lúc | Khóa dòng `vouchers` khi giữ mã. Người sau thấy mã đang `RESERVED` → 409. |
+| Voucher kẹt `RESERVED` | Event `BookingConfirmed`, `BookingExpired`, `BookingCancelled`, `BookingVoucherRemoved` cập nhật voucher. Job định kỳ kiểm tra lại voucher giữ lâu hơn `BOOKING_HOLD_TTL`. |
 
 ## 6. Cấu hình
 
@@ -489,7 +571,7 @@ Booking gọi qua OpenFeign (`infrastructure/client`), chỉ khi xem sơ đồ g
 ## 8. Schema `booking_db` và điểm khác ERD
 
 Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transactions`, `refunds`, `combos`, `booking_combos`, `vouchers`, `user_vouchers`
-(voucher chưa áp được vào booking). Các cột thêm so với ERD và lý do:
+và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 
 | Bảng.cột | Lý do |
 | --- | --- |
@@ -504,7 +586,10 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `booking_combos.combo_name` | Giữ tên combo lúc mua |
 | `vouchers.kind`, `seat_type_id`, `combo_id` | Loại voucher và điều kiện áp dụng |
 | `vouchers.version` | Optimistic locking (`@Version`) |
-| `user_vouchers.booking_id` | Booking đang giữ voucher |
+| `user_vouchers.booking_id` | Booking đang giữ hoặc đã dùng voucher |
+| `booking_seats.seat_type_id` | Để voucher lọc theo loại ghế. `NULL` với booking cũ |
+| `bookings.discount_amount` | Tổng tiền voucher trừ. `total_amount` là số còn phải trả |
+| Bảng `booking_vouchers` | Voucher trên từng booking, kèm bản sao điều kiện và số tiền đang trừ. Bị xóa khi khách gỡ voucher, còn lại khi booking hủy hoặc hết hạn |
 
 `vouchers.usage_limit` theo ERD được giữ lại nhưng không dùng, vì mỗi mã chỉ dùng một lần. `uq_user_vouchers_voucher` đảm bảo mỗi mã có tối đa một chủ.
 

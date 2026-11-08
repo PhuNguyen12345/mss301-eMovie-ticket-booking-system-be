@@ -126,6 +126,71 @@ class VoucherTest {
     }
 
     @Test
+    void onlyTheOwnerCanHoldAnUsableVoucherForOneBooking() {
+        var unowned = voucher();
+        assertThrows(InvalidStateTransitionException.class, () -> unowned.reserveFor(7, 42, NOW));
+
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        assertThrows(InvalidStateTransitionException.class, () -> voucher.reserveFor(8, 42, NOW));
+        voucher.reserveFor(7, 42, NOW);
+        assertEquals(ClaimStatus.RESERVED, voucher.claim().status());
+        assertEquals(42, voucher.claim().bookingId());
+        assertEquals(VoucherAvailability.RESERVED, voucher.availabilityOn(NOW.toLocalDate()));
+        assertDoesNotThrow(() -> voucher.reserveFor(7, 42, NOW));
+        assertThrows(InvalidStateTransitionException.class, () -> voucher.reserveFor(7, 43, NOW));
+    }
+
+    @Test
+    void aVoucherCanBeHeldOnlyWhileActiveAndWithinItsDates() {
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        assertThrows(DomainException.class, () -> voucher.reserveFor(7, 42, START.minusDays(1).atTime(12, 0)));
+        assertThrows(DomainException.class, () -> voucher.reserveFor(7, 42, END.plusDays(1).atStartOfDay()));
+        assertDoesNotThrow(() -> voucher.reserveFor(7, 42, END.atTime(23, 59)));
+        voucher.releaseFrom(42, NOW);
+        voucher.deactivate(NOW);
+        assertThrows(InvalidStateTransitionException.class, () -> voucher.reserveFor(7, 42, NOW));
+    }
+
+    @Test
+    void onlyTheHoldingBookingGivesTheVoucherBack() {
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        assertFalse(voucher.releaseFrom(42, NOW));
+        voucher.reserveFor(7, 42, NOW);
+        assertFalse(voucher.releaseFrom(43, NOW));
+        assertTrue(voucher.releaseFrom(42, NOW));
+        assertEquals(ClaimStatus.AVAILABLE, voucher.claim().status());
+        assertNull(voucher.claim().bookingId());
+        assertFalse(voucher.releaseFrom(42, NOW));
+        voucher.reserveFor(7, 43, NOW);
+    }
+
+    @Test
+    void aPaidBookingUsesTheVoucherUpOnce() {
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        voucher.reserveFor(7, 42, NOW);
+        assertFalse(voucher.markUsedBy(43, NOW));
+        assertTrue(voucher.markUsedBy(42, NOW.plusMinutes(1)));
+        assertEquals(ClaimStatus.USED, voucher.claim().status());
+        assertEquals(NOW.plusMinutes(1), voucher.claim().usedAt());
+        assertEquals(VoucherAvailability.USED, voucher.availabilityOn(NOW.toLocalDate()));
+        assertFalse(voucher.markUsedBy(42, NOW.plusMinutes(2)));
+        assertFalse(voucher.releaseFrom(42, NOW));
+        assertThrows(InvalidStateTransitionException.class, () -> voucher.reserveFor(7, 44, NOW));
+    }
+
+    @Test
+    void aVoucherGivenBackByMistakeIsStillUsedByThePaidBooking() {
+        var voucher = voucher();
+        voucher.assignTo(7, NOW);
+        assertTrue(voucher.markUsedBy(42, NOW));
+        assertEquals(42, voucher.claim().bookingId());
+    }
+
+    @Test
     void codesAreCaseInsensitiveAndGeneratedOnesAreValid() {
         assertEquals("TET-2027", VoucherCode.of("  tet-2027 ").value());
         assertThrows(DomainException.class, () -> VoucherCode.of("a b"));

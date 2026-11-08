@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -59,6 +60,11 @@ class JpaVoucherRepository implements VoucherRepository, VoucherQueries {
     @Override
     public Optional<Voucher> findByCodeForUpdate(String code) {
         return jpa.lockByCode(code).map(VoucherMapper::toDomain);
+    }
+
+    @Override
+    public List<Integer> findReservedSince(LocalDateTime before, int limit) {
+        return jpa.findReservedSince(before, PageRequest.of(0, limit));
     }
 
     @Override

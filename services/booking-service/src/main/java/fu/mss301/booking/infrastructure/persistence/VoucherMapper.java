@@ -44,13 +44,14 @@ final class VoucherMapper {
         }
         entity.setUserId(claim.userId());
         entity.setStatus(claim.status());
+        entity.setBookingId(claim.bookingId());
         entity.setUsedAt(claim.usedAt());
         entity.setCreatedAt(claim.createdAt());
         entity.setUpdatedAt(claim.updatedAt());
     }
 
     private static VoucherClaim toDomain(UserVoucherEntity entity) {
-        return VoucherClaim.restore(entity.getId(), entity.getUserId(), entity.getStatus(), entity.getUsedAt(),
-            entity.getCreatedAt(), entity.getUpdatedAt());
+        return VoucherClaim.restore(entity.getId(), entity.getUserId(), entity.getStatus(), entity.getBookingId(),
+            entity.getUsedAt(), entity.getCreatedAt(), entity.getUpdatedAt());
     }
 }

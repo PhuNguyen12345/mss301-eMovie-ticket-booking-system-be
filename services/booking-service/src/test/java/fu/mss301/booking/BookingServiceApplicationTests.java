@@ -290,7 +290,7 @@ class BookingServiceApplicationTests {
         var confirmed = queries.getBooking(7, false, booking.id());
         assertEquals(BookingStatus.CONFIRMED, confirmed.status());
         assertEquals(SeatHoldStatus.BOOKED, confirmed.seats().getFirst().status());
-        assertEquals(PaymentStatus.SUCCESS, confirmed.payment().status());
+        assertEquals("SUCCESS", confirmed.payment().status());
         assertEquals(Availability.BOOKED, availability(101));
         assertTrue(refunds.list(RefundStatus.PENDING).stream().noneMatch(r -> r.bookingId().equals(booking.id())));
     }
@@ -305,7 +305,7 @@ class BookingServiceApplicationTests {
 
         var expired = queries.getBooking(7, false, booking.id());
         assertEquals(BookingStatus.EXPIRED, expired.status());
-        assertEquals(PaymentStatus.FAILED, expired.payment().status());
+        assertEquals("FAILED", expired.payment().status());
         verify(gateway).cancelLink(eq(payment.orderCode()), anyString());
         assertEquals(Availability.AVAILABLE, availability(101));
         assertNotNull(holdSeats.hold(8, showtimeId, List.of(101)), "released seat can be held again");
@@ -319,7 +319,7 @@ class BookingServiceApplicationTests {
             .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
         var completed = refunds.complete(refund.id());
         assertEquals(RefundStatus.COMPLETED, completed.status());
-        assertEquals(PaymentStatus.REFUNDED, queries.getBooking(7, false, booking.id()).payment().status());
+        assertEquals("REFUNDED", queries.getBooking(7, false, booking.id()).payment().status());
     }
 
     @Test
@@ -380,7 +380,7 @@ class BookingServiceApplicationTests {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
         cancelBooking.cancel(7, booking.id());
-        assertEquals(PaymentStatus.FAILED, queries.getBooking(7, false, booking.id()).payment().status());
+        assertEquals("FAILED", queries.getBooking(7, false, booking.id()).payment().status());
         verify(gateway).cancelLink(eq(payment.orderCode()), anyString());
     }
 
@@ -633,7 +633,7 @@ class BookingServiceApplicationTests {
         assertEquals(withoutPayment.id(), found.getFirst().id());
         assertNull(found.getFirst().payment());
         assertEquals(latest.id(), found.getLast().payment().id());
-        assertEquals(PaymentStatus.PENDING, found.getLast().payment().status());
+        assertEquals("PENDING", found.getLast().payment().status());
         assertEquals(latest.id(), queries.myBookings(user, 0, 10).content().getLast().payment().id());
     }
 

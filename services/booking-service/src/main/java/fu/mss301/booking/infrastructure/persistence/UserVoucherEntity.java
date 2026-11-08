@@ -25,6 +25,9 @@ public class UserVoucherEntity {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Integer userId;
 
+    @Column(name = "booking_id")
+    private Integer bookingId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private ClaimStatus status;

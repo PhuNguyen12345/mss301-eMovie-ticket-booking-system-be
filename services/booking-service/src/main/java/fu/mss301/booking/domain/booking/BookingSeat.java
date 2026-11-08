@@ -13,13 +13,15 @@ public final class BookingSeat {
     private final String rowCode;
     private final Integer seatNumber;
     private final String seatTypeName;
+    /** Null for bookings made before the seat type was stored. */
+    private final Integer seatTypeId;
     private SeatHoldStatus status;
     private final LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     private BookingSeat(Integer id, Long showtimeId, Integer showtimeSeatId, Integer seatId, BigDecimal price,
-                        String rowCode, Integer seatNumber, String seatTypeName, SeatHoldStatus status,
-                        LocalDateTime createdAt, LocalDateTime updatedAt) {
+                        String rowCode, Integer seatNumber, String seatTypeName, Integer seatTypeId,
+                        SeatHoldStatus status, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.showtimeId = showtimeId;
         this.showtimeSeatId = showtimeSeatId;
@@ -28,6 +30,7 @@ public final class BookingSeat {
         this.rowCode = rowCode;
         this.seatNumber = seatNumber;
         this.seatTypeName = seatTypeName;
+        this.seatTypeId = seatTypeId;
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -35,15 +38,17 @@ public final class BookingSeat {
 
     static BookingSeat hold(Long showtimeId, SeatSelection selection, LocalDateTime now) {
         return new BookingSeat(null, showtimeId, selection.showtimeSeatId(), selection.seatId(), selection.price(),
-            selection.rowCode(), selection.seatNumber(), selection.seatTypeName(), SeatHoldStatus.HELD, now, now);
+            selection.rowCode(), selection.seatNumber(), selection.seatTypeName(), selection.seatTypeId(), SeatHoldStatus.HELD,
+            now, now);
     }
 
     /** Rebuilds a stored seat; performs no business validation. */
     public static BookingSeat restore(Integer id, Long showtimeId, Integer showtimeSeatId, Integer seatId,
                                       BigDecimal price, String rowCode, Integer seatNumber, String seatTypeName,
-                                      SeatHoldStatus status, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                                      Integer seatTypeId, SeatHoldStatus status, LocalDateTime createdAt,
+                                      LocalDateTime updatedAt) {
         return new BookingSeat(id, showtimeId, showtimeSeatId, seatId, price, rowCode, seatNumber, seatTypeName,
-            status, createdAt, updatedAt);
+            seatTypeId, status, createdAt, updatedAt);
     }
 
     void book(LocalDateTime now) {
@@ -64,6 +69,7 @@ public final class BookingSeat {
     public String rowCode() { return rowCode; }
     public Integer seatNumber() { return seatNumber; }
     public String seatTypeName() { return seatTypeName; }
+    public Integer seatTypeId() { return seatTypeId; }
     public SeatHoldStatus status() { return status; }
     public LocalDateTime createdAt() { return createdAt; }
     public LocalDateTime updatedAt() { return updatedAt; }
