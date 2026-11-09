@@ -78,7 +78,7 @@ class RegistrationVerificationServiceImplTest {
     @Test
     void fifthIncorrectOtpLocksFurtherAttempts() {
         Registration registration = pending();
-        registration.setFailedAttempts(4);
+        registration = registration.toBuilder().failedAttempts(4).build();
         when(pendingRepository.findByIdForUpdate(ID.toString())).thenReturn(Optional.of(registration));
 
         assertEquals(StatusCode.TOO_MANY_REQUESTS, statusFor(request));
@@ -94,7 +94,7 @@ class RegistrationVerificationServiceImplTest {
     @Test
     void expiredOtpDoesNotCreateUser() {
         Registration registration = pending();
-        registration.setExpiresAt(NOW);
+        registration = registration.toBuilder().expiresAt(NOW).build();
         when(pendingRepository.findByIdForUpdate(ID.toString())).thenReturn(Optional.of(registration));
 
         assertEquals(StatusCode.GONE, statusFor(request));
@@ -105,7 +105,7 @@ class RegistrationVerificationServiceImplTest {
     void alreadyConfirmedAndMissingRegistrationAreRejected() {
         assertEquals(StatusCode.NOT_FOUND, statusFor(request));
         Registration registration = pending();
-        registration.setConfirmedAt(NOW.minusMinutes(1));
+        registration = registration.toBuilder().confirmedAt(NOW.minusMinutes(1)).build();
         when(pendingRepository.findByIdForUpdate(ID.toString())).thenReturn(Optional.of(registration));
         assertEquals(StatusCode.CONFLICT, statusFor(request));
         verifyNoInteractions(users, roles, encoder);

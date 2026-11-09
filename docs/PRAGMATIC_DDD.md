@@ -1,6 +1,6 @@
 # Pragmatic DDD – Kiến trúc bên trong mỗi service
 
-> **Lưu ý:** booking-service và showtime-service đã chuyển sang Clean Architecture, nên booking không còn là service mẫu của tài liệu này. Các ví dụ code bên dưới phản ánh phiên bản booking trước đó (`@Entity` trong domain, Spring Data tự publish event).
+> **Tài liệu lịch sử:** Cấu trúc hiện tại xem [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md). Movie đã tách domain/application/infrastructure; HTTP adapter nằm ở `infrastructure/web`. Booking-service và showtime-service đã chuyển sang Clean Architecture, nên booking không còn là service mẫu của tài liệu này. Các ví dụ code bên dưới phản ánh phiên bản booking trước đó (`@Entity` trong domain, Spring Data tự publish event).
 >
 > Tài liệu vẫn hữu ích như một bước trung gian khi refactor từ MVC: bỏ setter, đưa logic vào aggregate, tách use case. Khi cần tách domain khỏi framework, xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md) và [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md).
 
@@ -10,7 +10,7 @@ Tài liệu này mô tả cách team tổ chức code **bên trong một microse
 
 ## 1. Pragmatic DDD là gì, vì sao chọn
 
-| | MVC / Anemic (cũ) | Pragmatic DDD (đang áp dụng) | Hexagonal thuần |
+| | MVC / Anemic (cũ) | Pragmatic DDD (bước trung gian cũ) | Hexagonal thuần |
 | --- | --- | --- | --- |
 | Logic nghiệp vụ nằm ở | `service/` (procedural) | **Aggregate** (entity tự bảo vệ) | Aggregate |
 | Entity | `@Getter @Setter`, ai cũng sửa được | `@Entity` nhưng **không setter**, đổi state qua method nghiệp vụ | POJO thuần, JPA entity riêng + mapper |

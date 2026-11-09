@@ -40,12 +40,12 @@ e-movie-ticket-booking-system/
 │   │       │   ├── client/        # OpenFeign gọi showtime/cinema + adapter
 │   │       │   ├── payos/         # PayOS SDK adapter
 │   │       │   ├── config/        # UseCaseConfig, SpringTransactions, Clock, @ConfigurationProperties
-│   │       │   └── scheduling/    # Job hết hạn giữ ghế & đối soát thanh toán
-│   │       └── presentation/      # REST API
-│   │           ├── controller/
-│   │           ├── dto/           # Request body + Bean Validation
-│   │           ├── security/      # Đọc danh tính người dùng từ header của gateway
-│   │           └── exception/     # Map exception → HTTP status
+│   │       │   ├── scheduling/    # Job hết hạn giữ ghế & đối soát thanh toán
+│   │       │   └── web/           # REST API
+│   │       │       ├── controller/
+│   │       │       ├── dto/           # Request body + Bean Validation
+│   │       │       ├── security/      # Đọc danh tính người dùng từ header của gateway
+│   │       │       └── exception/     # Map exception → HTTP status
 │   │
 │   ├── cinema-service/     # Quản lý rạp, phòng chiếu, sơ đồ ghế vật lý
 │   ├── movie-service/      # Quản lý phim, danh mục
@@ -64,20 +64,20 @@ e-movie-ticket-booking-system/
 
 * **Tách biệt ranh giới (Domain Isolation):** Mỗi microservice sở hữu một cơ sở dữ liệu độc lập. Giao tiếp liên dịch vụ (Inter-service communication) bắt buộc thực hiện thông qua HTTP/OpenFeign; trong service theo DDD, Feign client nằm ở `infrastructure/client` và được che sau một `port` ở `application`.
 * **Rich Domain Model:** Entity không có public setter; tạo bằng static factory; thay đổi trạng thái qua method có tên nghiệp vụ (`confirm()`, `expire()`, `cancelBy()`); invariant được kiểm tra ngay trong Aggregate.
-* **1 transaction = 1 aggregate:** Một transaction chỉ cập nhật một Aggregate. Cần cập nhật Aggregate khác thì phát Domain Event và xử lý ở `application/policy` trong transaction riêng. Gọi service khác / bên thứ ba luôn nằm ngoài transaction DB.
+* **Transaction theo nghiệp vụ:** Booking giữ transaction riêng cho từng aggregate và xử lý event sau commit. User giữ transaction hiện tại cho tài khoản, OTP và refresh token. Không bắt buộc thêm event hay message broker cho các service khác. Tích hợp upload ảnh của Movie chạy ngoài transaction DB.
 * **Không bypass Aggregate Root:** Không tạo repository cho entity con; thay đổi entity con thông qua root rồi lưu bằng repository của root.
 * **Đồng bộ dữ liệu trả về:** Mọi API Endpoints từ tất cả các services đều phải bọc dữ liệu trả về bằng class `ApiResponse` từ module `common` để đảm bảo tính nhất quán cho phía Frontend.
-* **Xử lý lỗi tập trung:** Domain chỉ ném `DomainException` (không biết HTTP). Tầng `presentation/exception` map lỗi nghiệp vụ sang HTTP status; các lỗi còn lại (`ApiException`, validation, 500) do `GlobalExceptionHandler` của `common` xử lý.
+* **Xử lý lỗi tập trung:** Domain ném lỗi nghiệp vụ thuần Java (không biết HTTP). Tầng `infrastructure/web/exception` map lỗi nghiệp vụ sang HTTP status; các lỗi còn lại (`ApiException`, validation, 500) do `GlobalExceptionHandler` của `common` xử lý.
 * **Quản lý tiến trình ngầm:** Các tác vụ không thuộc luồng giao dịch chính (gửi email, hết hạn giữ ghế, đối soát thanh toán) chạy bất đồng bộ / theo lịch và chỉ gọi use case, không chứa logic nghiệp vụ.
 
-Checklist review đầy đủ: [PRAGMATIC_DDD.md – mục 4](PRAGMATIC_DDD.md#4-quy-tắc-vàng-checklist-khi-review-pr).
+Quy ước hiện tại: [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md). Checklist của bước chuyển đổi cũ: [PRAGMATIC_DDD.md – mục 4](PRAGMATIC_DDD.md#4-quy-tắc-vàng-checklist-khi-review-pr).
 
 ## 3. Trạng thái kiến trúc từng service
 
 | Service | Kiến trúc hiện tại | Ghi chú |
 | --- | --- | --- |
 | booking-service | Clean Architecture + DDD thuần | Domain/application không phụ thuộc Spring; JPA tách riêng; có domain event. Xem [BOOKING_ARCHITECTURE.md](BOOKING_ARCHITECTURE.md), [BOOKING_API.md](BOOKING_API.md) |
-| user-service | Hexagonal (DDD thuần, domain tách JPA) | Tương thích, không bắt buộc đổi |
-| movie-service | MVC 3 lớp | Refactor dần theo [PRAGMATIC_DDD.md – mục 6](PRAGMATIC_DDD.md#6-hướng-dẫn-refactor-service-mvc-sang-pragmatic-ddd) |
+| user-service | Hexagonal (DDD thuần, domain tách JPA) | Domain quản lý trạng thái OTP, refresh token và đổi mật khẩu; Spring/JPA ở infrastructure |
+| movie-service | Domain + application/usecase + infrastructure | Domain kiểm tra phim và quan hệ; use case qua port; Spring/JPA/Cloudinary ở infrastructure. Xem [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) |
 | showtime-service | Clean Architecture + DDD thuần | Domain/application không phụ thuộc Spring; JPA tách riêng. Xem [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md) |
-| cinema-service | Hexagonal như user-service | Domain, application, infrastructure; cung cấp API rạp, phòng và ghế vật lý. Xem [CINEMA_API.md](CINEMA_API.md) |
+| cinema-service | Hexagonal như user-service | Domain/application không import Spring/JPA; transaction cấu hình ở infrastructure; cung cấp API rạp, phòng và ghế vật lý. Xem [CINEMA_API.md](CINEMA_API.md) |

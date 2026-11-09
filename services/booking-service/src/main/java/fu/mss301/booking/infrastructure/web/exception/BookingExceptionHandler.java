@@ -1,0 +1,87 @@
+package fu.mss301.booking.infrastructure.web.exception;
+
+import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.application.exception.ComboNotFoundException;
+import fu.mss301.booking.application.exception.ComboUnavailableException;
+import fu.mss301.booking.application.exception.InvalidWebhookException;
+import fu.mss301.booking.application.exception.PaymentGatewayException;
+import fu.mss301.booking.application.exception.RefundNotFoundException;
+import fu.mss301.booking.application.exception.SeatUnavailableException;
+import fu.mss301.booking.application.booking.CheckInView;
+import fu.mss301.booking.application.exception.TicketAlreadyUsedException;
+import fu.mss301.booking.application.exception.UpstreamServiceException;
+import fu.mss301.booking.application.exception.VoucherNotFoundException;
+import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
+import fu.mss301.booking.domain.voucher.VoucherCodeTakenException;
+import fu.mss301.common.dto.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+/**
+ * Maps domain/application exceptions to HTTP. Runs before the shared GlobalExceptionHandler, which still
+ * handles ApiException, bean validation and the 500 fallback.
+ */
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class BookingExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(BookingExceptionHandler.class);
+
+    @ExceptionHandler({BookingNotFoundException.class, RefundNotFoundException.class, ComboNotFoundException.class,
+        VoucherNotFoundException.class})
+    ResponseEntity<ApiResponse<String>> notFound(RuntimeException exception) {
+        return error(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler({InvalidStateTransitionException.class, SeatUnavailableException.class,
+        ComboUnavailableException.class, VoucherCodeTakenException.class})
+    ResponseEntity<ApiResponse<String>> conflict(RuntimeException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    /** Carries the earlier scans, so door staff see when the ticket was used. */
+    @ExceptionHandler(TicketAlreadyUsedException.class)
+    ResponseEntity<ApiResponse<CheckInView>> alreadyUsed(TicketAlreadyUsedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ApiResponse<>(HttpStatus.CONFLICT.value(), exception.getMessage(), exception.booking()));
+    }
+
+    @ExceptionHandler({OptimisticLockingFailureException.class, PessimisticLockingFailureException.class})
+    ResponseEntity<ApiResponse<String>> concurrentUpdate(RuntimeException exception) {
+        return error(HttpStatus.CONFLICT, "The booking was changed by another request, please retry");
+    }
+
+    @ExceptionHandler({DomainException.class, InvalidWebhookException.class, IllegalArgumentException.class})
+    ResponseEntity<ApiResponse<String>> badRequest(RuntimeException exception) {
+        return error(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiResponse<String>> typeMismatch(MethodArgumentTypeMismatchException exception) {
+        return error(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + exception.getName() + "'");
+    }
+
+    @ExceptionHandler(UpstreamServiceException.class)
+    ResponseEntity<ApiResponse<String>> upstream(UpstreamServiceException exception) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+    }
+
+    @ExceptionHandler(PaymentGatewayException.class)
+    ResponseEntity<ApiResponse<String>> paymentGateway(PaymentGatewayException exception) {
+        log.warn("Payment gateway error: {}", exception.getMessage(), exception.getCause());
+        return error(HttpStatus.BAD_GATEWAY, "Payment provider is unavailable, please try again");
+    }
+
+    private static ResponseEntity<ApiResponse<String>> error(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(ApiResponse.error(status.value(), message));
+    }
+}

@@ -70,7 +70,7 @@ class UserAuthenticationServiceTest {
 
     @Test
     void rejectsInactiveUserAfterMatchingPassword() {
-        user.setStatus("DISABLED");
+        user = user.toBuilder().status("DISABLED").build();
         when(repository.findByEmail("admin@gmail.com")).thenReturn(Optional.of(user));
         var error = assertThrows(UseCaseException.class,
                 () -> service.authenticate(new LoginRequest("admin@gmail.com", "1-8")));
@@ -80,7 +80,7 @@ class UserAuthenticationServiceTest {
 
     @Test
     void rejectsUnverifiedEmailAfterMatchingPassword() {
-        user.setEmailVerifiedAt(null);
+        user = user.toBuilder().emailVerifiedAt(null).build();
         when(repository.findByEmail("admin@gmail.com")).thenReturn(Optional.of(user));
         var error = assertThrows(UseCaseException.class,
                 () -> service.authenticate(new LoginRequest("admin@gmail.com", "1-8")));
@@ -90,8 +90,8 @@ class UserAuthenticationServiceTest {
 
     @Test
     void wrongPasswordDoesNotExposeAccountState() {
-        user.setStatus("DISABLED");
-        user.setEmailVerifiedAt(null);
+        user = user.toBuilder().status("DISABLED").build();
+        user = user.toBuilder().emailVerifiedAt(null).build();
         when(repository.findByEmail("admin@gmail.com")).thenReturn(Optional.of(user));
         var error = assertThrows(UseCaseException.class,
                 () -> service.authenticate(new LoginRequest("admin@gmail.com", "wrong-password")));

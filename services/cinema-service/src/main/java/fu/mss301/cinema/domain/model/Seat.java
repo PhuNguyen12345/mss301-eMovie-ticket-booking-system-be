@@ -12,4 +12,7 @@ public record Seat(Integer id, Integer screenId, String rowCode, Integer seatNum
         if (status == null) throw new CinemaDomainException("Invalid seat status");
     }
     public Seat withStatus(FacilityStatus next) { return new Seat(id, screenId, rowCode, seatNumber, seatTypeId, next); }
+    public Seat visibleIn(FacilityStatus cinema, FacilityStatus screen) {
+        return cinema == FacilityStatus.ACTIVE && screen == FacilityStatus.ACTIVE ? this : withStatus(FacilityStatus.INACTIVE);
+    }
 }

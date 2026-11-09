@@ -2,20 +2,17 @@ package fu.mss301.user.domain.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 import lombok.ToString;
 
 @Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@Builder(toBuilder = true)
+@NoArgsConstructor(access = lombok.AccessLevel.PRIVATE)
+@AllArgsConstructor(access = lombok.AccessLevel.PRIVATE)
 @ToString
 public class User {
     private Integer id;
@@ -34,9 +31,19 @@ public class User {
     private LocalDateTime emailVerifiedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    @Builder.Default private Set<UserRole> roles = new HashSet<>();
+    @lombok.Singular private Set<UserRole> roles;
 
     public boolean isActiveAndVerified() {
         return "ACTIVE".equals(status) && emailVerifiedAt != null;
+    }
+    public void changePassword(String encodedPassword, LocalDateTime now) {
+        if (!isActiveAndVerified())
+            throw new fu.mss301.user.domain.exception.DomainException(
+                    "Account is not active or email is not verified");
+        if (encodedPassword == null || encodedPassword.isBlank())
+            throw new fu.mss301.user.domain.exception.DomainException("Password hash is required");
+        java.util.Objects.requireNonNull(now);
+        passwordHash = encodedPassword;
+        updatedAt = now;
     }
 }

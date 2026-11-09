@@ -114,7 +114,7 @@ class PasswordResetServiceImplTest {
     void fifthWrongOtpAttemptIsPersisted() {
         stubUser();
         PasswordOtp reset = otp(PasswordOtpPurpose.PASSWORD_RESET, "012345");
-        reset.setFailedAttempts(4);
+        reset = reset.toBuilder().failedAttempts(4).build();
         when(otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(7, PasswordOtpPurpose.PASSWORD_RESET))
                 .thenReturn(Optional.of(reset));
         assertEquals(StatusCode.TOO_MANY_REQUESTS, statusFor("999999"));

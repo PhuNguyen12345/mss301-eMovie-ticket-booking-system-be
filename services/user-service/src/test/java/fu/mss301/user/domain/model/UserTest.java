@@ -12,10 +12,10 @@ class UserTest {
         var user = User.builder().status("ACTIVE").build();
         assertFalse(user.isActiveAndVerified());
 
-        user.setEmailVerifiedAt(LocalDateTime.of(2026, 10, 18, 12, 0));
+        user = user.toBuilder().emailVerifiedAt(LocalDateTime.of(2026, 10, 18, 12, 0)).build();
         assertTrue(user.isActiveAndVerified());
 
-        user.setStatus("SUSPENDED");
+        user = user.toBuilder().status("SUSPENDED").build();
         assertFalse(user.isActiveAndVerified());
     }
 }
