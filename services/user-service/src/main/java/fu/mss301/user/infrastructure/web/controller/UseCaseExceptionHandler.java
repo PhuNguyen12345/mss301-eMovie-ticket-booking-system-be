@@ -8,10 +8,16 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class UseCaseExceptionHandler {
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<String>> unsupportedMediaType(HttpMediaTypeNotSupportedException exception) {
+        return ResponseEntity.status(415).body(ApiResponse.error(415, "Unsupported content type"));
+    }
+
     @ExceptionHandler(UseCaseException.class)
     public ResponseEntity<ApiResponse<String>> handle(UseCaseException exception) {
         HttpHeaders headers = new HttpHeaders();

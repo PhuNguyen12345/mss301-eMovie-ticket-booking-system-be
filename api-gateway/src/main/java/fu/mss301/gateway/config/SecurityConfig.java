@@ -52,7 +52,7 @@ public class SecurityConfig {
             .authorizeExchange(auth -> auth
                 .pathMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .pathMatchers(HttpMethod.POST,
-                    "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
+                    "/api/auth/login", "/api/auth/register", "/api/auth/refresh", "/api/auth/logout",
                     "/api/auth/register/verify", "/api/auth/register/resend-otp",
                     "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                 .pathMatchers(HttpMethod.GET, CATALOG_PATHS).permitAll()
@@ -119,6 +119,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(Arrays.stream(origins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList());
         config.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        config.setAllowCredentials(true);
         config.setExposedHeaders(List.of("Location"));
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

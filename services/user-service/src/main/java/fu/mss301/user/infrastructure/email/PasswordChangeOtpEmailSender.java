@@ -1,5 +1,6 @@
 package fu.mss301.user.infrastructure.email;
 
+import fu.mss301.user.application.port.out.OtpDeliveryPort;
 import fu.mss301.user.domain.event.PasswordChangeOtpRequested;
 
 import fu.mss301.user.domain.model.OtpDeliveryStatus;
@@ -15,7 +16,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
 @Component
-public class PasswordChangeOtpEmailSender {
+public class PasswordChangeOtpEmailSender implements OtpDeliveryPort<PasswordChangeOtpRequested> {
     private static final Logger log = LoggerFactory.getLogger(PasswordChangeOtpEmailSender.class);
     private final JavaMailSender mailSender;
     private final PasswordResetOtpRepository repository;
@@ -30,6 +31,12 @@ public class PasswordChangeOtpEmailSender {
         this.from = from;
     }
 
+    @Override
+    public Class<PasswordChangeOtpRequested> eventType() {
+        return PasswordChangeOtpRequested.class;
+    }
+
+    @Override
     public void send(PasswordChangeOtpRequested event) {
         try {
             LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
@@ -57,6 +64,7 @@ public class PasswordChangeOtpEmailSender {
         }
     }
 
+    @Override
     public void markFailed(PasswordChangeOtpRequested event) {
         try {
             updateStatus(event, OtpDeliveryStatus.FAILED);

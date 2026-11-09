@@ -107,6 +107,32 @@ class RefreshTokenServiceTest {
         verify(tokens, never()).saveNew(any());
     }
 
+    @Test
+    void logoutRevokesOnlyThePresentedTokenAndCannotRefreshAgain() throws Exception {
+        String raw = "a".repeat(43);
+        var token = RefreshCredential.builder().user(user).revoked(false)
+                .expiresAt(LocalDateTime.of(2026, 10, 13, 7, 0)).build();
+        when(tokens.findByTokenHash(sha256(raw))).thenReturn(Optional.of(token));
+
+        service.revoke(raw);
+        service.revoke(raw);
+
+        assertTrue(token.getRevoked());
+        assertEquals(LocalDateTime.of(2026, 10, 12, 7, 0), token.getRevokedAt());
+        verify(tokens, times(1)).update(token);
+        verify(tokens, never()).revokeActiveByUserId(any(), any());
+        assertThrows(UseCaseException.class, () -> service.rotate(raw));
+        verify(tokens, never()).saveNew(any());
+    }
+
+    @Test
+    void logoutWithMissingOrMalformedCredentialIsIdempotent() {
+        service.revoke(null);
+        service.revoke("");
+        service.revoke("invalid");
+        verifyNoInteractions(tokens);
+    }
+
     private RefreshTokenStore.NewRefreshToken captureSaved() {
         var captor = ArgumentCaptor.forClass(RefreshTokenStore.NewRefreshToken.class);
         verify(tokens).saveNew(captor.capture());

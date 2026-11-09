@@ -69,6 +69,16 @@ public class RefreshTokenUseCase implements RefreshTokenService {
         return new IssuedRefreshToken(rawToken, ttl.getSeconds());
     }
 
+    public void revoke(String rawToken) {
+        if (rawToken == null || !rawToken.matches("[A-Za-z0-9_-]{43}")) return;
+        tokens.findByTokenHash(hash(rawToken)).ifPresent(token -> {
+            if (Boolean.TRUE.equals(token.getRevoked())) return;
+            var now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+            token.revoke(now);
+            tokens.update(token);
+        });
+    }
+
     private String hash(String token) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.US_ASCII));

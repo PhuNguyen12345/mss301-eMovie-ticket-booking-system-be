@@ -40,12 +40,12 @@ public class AuthController {
         this.registrationVerificationService = registrationVerificationService;
     }
 
-    @PostMapping("/login")
+    @PostMapping(value = "/login", params = "!transport")
     public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Login successful", ApiDtoMapper.toApi(loginService.login(ApiDtoMapper.toApplication(request)))));
     }
 
-    @PostMapping("/refresh")
+    @PostMapping(value = "/refresh", params = "!transport")
     public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody RefreshRequest request) {
         return ResponseEntity.ok(new ApiResponse<>(HttpStatus.OK.value(), "Token refreshed",
                 ApiDtoMapper.toApi(refreshService.refresh(ApiDtoMapper.toApplication(request)))));

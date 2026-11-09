@@ -25,6 +25,10 @@ public class RefreshCredential {
     public void consume(LocalDateTime now) {
         if (!canRotate(now))
             throw new fu.mss301.user.domain.exception.DomainException("Invalid refresh token");
+        revoke(now);
+    }
+    public void revoke(LocalDateTime now) {
+        if (Boolean.TRUE.equals(revoked)) return;
         revoked = true;
         revokedAt = now;
         updatedAt = now;
