@@ -192,9 +192,13 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
 
 ## New API integration (2026-11-09)
 
-- FE branch merged master through `95b7c2d` (voucher, check-in, showtime cancellation,
-  statistics and payment history). BE architecture PR #44 is separate and is not
-  required by these HTTP contracts.
+- FE branch merged master through `b1bb100` (voucher, check-in, showtime cancellation,
+  statistics, payment history and the now-merged BE architecture PR #44).
+- The merge removed refresh-credential setters used by browser logout. Logout now
+  calls the domain revoke method, preserving idempotency and allowing expired or
+  inactive-account credentials to be revoked. Domain regression coverage is added.
+- Post-merge gateway/user suite: 142 tests passed (excludes the environment-dependent
+  `UserServiceApplicationTests`); all seven application JARs rebuilt cleanly.
 - API clients validate new booking/payment states and fields. A NOT_REQUIRED response
   must have zero amount and null transaction/checkout fields. QR uses bearer-authenticated
   PNG fetches and revokes browser object URLs when released.
@@ -208,7 +212,9 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
 - Live Chromium against gateway/MySQL verified voucher create/claim/apply,
   NOT_REQUIRED confirmation and real QR PNG, check-in and duplicate rejection,
   showtime cancellation/recovery, cancelled booking/wallet, statistics grouped by
-  movie and payment-history reads. No browser errors. Artifacts are runtime
+  movie and payment-history reads. Repeated successfully after merging `b1bb100`,
+  including cookie restoration, logout and rejection of the revoked cookie.
+  No browser errors. Artifacts are runtime
   `live-results/operations-report.json`, `operations-ticket-mobile.png`,
   `operations-checkin.png` and `operations-reports.png`.
 - These live bookings used 100% ticket discounts, without a PayOS transaction.
@@ -220,4 +226,4 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   -f /tmp/emovie-fe-live-jars.yml up -d --no-build`. The override is machine-local;
   rebuild JARs with `mvn install -DskipTests` followed by `mvn -o -pl
   discovery-server,api-gateway,services/booking-service,services/cinema-service,services/movie-service,services/user-service,services/showtime-service
-  package spring-boot:repackage -DskipTests` before recreating app containers.
+  clean package spring-boot:repackage -DskipTests` before recreating app containers.

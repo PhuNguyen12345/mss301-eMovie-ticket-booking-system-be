@@ -28,13 +28,15 @@ On the current development machine, the live backend snapshot and database volum
 are managed from `.worktrees/local-runtime` in the main repository:
 
 ```sh
-docker compose -p emovie-local -f compose.yml -f compose.local.yml up -d
+docker compose -p emovie-local -f compose.yml -f compose.local.yml \
+  -f /tmp/emovie-fe-live-jars.yml up -d --no-build
 ```
 
 The live FE preview is at `http://127.0.0.1:5174`; port 5173 is the visual demo.
 Local admin/customer credentials are in the runtime directory's private
 `.local-credentials.json`. This machine-specific snapshot is not part of the
-checkout; see [MEMORY.md](MEMORY.md) for source revisions, local fixes and verified
+checkout. The temporary override mounts executable JARs from the FE worktree;
+see [MEMORY.md](MEMORY.md) for rebuild instructions, source revisions, local fixes and verified
 integration limits.
 
 For production, configure the hosting reverse proxy for `/api` and serve
@@ -78,7 +80,7 @@ private API data. Real booking uses API mode and the deployed cinema service.
 
 Both customer and admin accounts use `POST /auth/login`. The admin layout checks
 ADMIN role; the gateway remains the authorization authority. The branch includes
-backend master through `9b58f53`, including auth routes, cinema catalogue, combo
+backend master through `b1bb100`, including auth routes, cinema catalogue, combo
 APIs, admin booking search and ticket snapshots. It also fixes the three OTP email
 senders so Spring discovers them as delivery ports. Deploy that fix with the
 registration/reset screens; public routes alone are insufficient to deliver OTPs.
@@ -184,7 +186,7 @@ holds, role access, private-cache isolation, refund confirmation and mobile
 layout. Browser API tests use mocked HTTP contracts and a mocked PayOS checkout;
 they do not perform real transactions or replace live backend integration testing.
 
-Current checks: 33 unit tests and 45 browser contract tests for cookie restoration,
+Current checks: 37 unit tests and 56 browser contract tests for cookie restoration,
 reload/payment returns, concurrent tabs, logout failure, session
 rotation races, multipart handling and movie-management drafts. Separately, live
 Chromium verified registration/reset with MailHog OTPs, cinema/room/seat creation,
@@ -194,6 +196,12 @@ movie genre/credit assignment, customer detail and real refresh-token rotation.
 Live checks also verify customer/admin genre filters, status-only updates with the
 sample status restored afterwards, and location filtering against existing shows.
 PayOS payment and Cloudinary upload remain unverified without credentials.
+
+Live checks on 2026-11-09 additionally verified voucher creation/claim/application,
+zero-total confirmation, authenticated ticket QR, check-in/replay rejection,
+cancelled-showtime recovery, wallet and server reports/payment-history reads.
+These bookings used 100% ticket discounts and did not create PayOS transactions.
+The report and desktop/mobile screenshots are in runtime `live-results/operations-*`.
 
 Live session checks against MySQL also verify reload, concurrent tabs, revocation
 of old cookies, payment-return restoration and synchronized logout. The report is
