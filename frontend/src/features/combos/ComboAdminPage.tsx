@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
@@ -80,7 +81,9 @@ function ComboManagement() {
         </div>
       )}
       {query.data?.length === 0 && <EmptyState title="Chưa có combo" />}
-      <Placeholder compact title="Mã ưu đãi" />
+      <Link className="text-link" to="/admin/vouchers">
+        Quản lý mã ưu đãi →
+      </Link>
       {edit && (
         <ComboDialog
           combo={edit === "create" ? undefined : edit}

@@ -48,7 +48,13 @@ export function useCancelShowtime() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => showtimes.cancel(id),
-    onSuccess: () => client.invalidateQueries({ queryKey: showtimeKeys.lists }),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["showtimes"] }),
+        client.invalidateQueries({ queryKey: ["seat-map"] }),
+        client.invalidateQueries({ queryKey: ["private"] }),
+      ]);
+    },
   });
 }
 export function useUpdateShowtime(id?: number) {

@@ -23,7 +23,9 @@ export function CancelShowtimeDialog({
         Phòng {show.screenId}.
       </p>
       <p className="muted">
-        Suất chiếu sẽ được đánh dấu đã hủy và khung giờ được giải phóng.
+        Suất chiếu sẽ được hủy. Hệ thống xử lý các đơn liên quan và phát voucher
+        bù cho đơn đã trả tiền theo chính sách của rạp. Có thể kiểm tra và xử lý
+        lại ở mục Suất đã hủy.
       </p>
       <ErrorMessage error={mutation.error} />
       <div className="dialog-actions">

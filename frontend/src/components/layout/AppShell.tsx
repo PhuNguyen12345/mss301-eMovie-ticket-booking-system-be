@@ -27,6 +27,7 @@ export function AppShell() {
             Phim
           </NavLink>
           <NavLink to="/bookings">Vé của tôi</NavLink>
+          <NavLink to="/vouchers">Ưu đãi</NavLink>
           <NavLink to="/account">Tài khoản</NavLink>
           {(session.isAdmin || session.mode === "demo") && (
             <NavLink to="/admin/showtimes">Quản trị</NavLink>

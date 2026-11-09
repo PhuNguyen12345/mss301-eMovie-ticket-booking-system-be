@@ -25,6 +25,9 @@ import { createCinemaApi } from "../features/cinema/api";
 import { createComboApi } from "../features/combos/api";
 import { createMovieManagementApi } from "../features/movie-management/api";
 
+import { createVoucherApi } from "../features/vouchers/api";
+import { createOperationsApi } from "../features/operations/api";
+
 function createServices() {
   const mode = import.meta.env.VITE_DATA_MODE || "api";
   const session = createSessionStore({
@@ -49,6 +52,8 @@ function createServices() {
     client,
     movies: createMovieApi(client),
     booking: createBookingApi(client),
+    vouchers: createVoucherApi(client),
+    operations: createOperationsApi(client),
     cinema: createCinemaApi(client),
     combos: createComboApi(client),
     movieManagement: createMovieManagementApi(client),

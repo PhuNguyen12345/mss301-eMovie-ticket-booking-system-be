@@ -106,6 +106,7 @@ async function mockApi(page: Page) {
         });
       const catalogue = cinemaResponse(url.pathname);
       if (catalogue !== undefined) return send(catalogue);
+      if (path === "/api/vouchers/me") return send([]);
       if (path === "/api/auth/refresh") return send(null, 401);
       if (path === "/api/auth/logout") return send(null);
       if (path === "/api/auth/login")
@@ -416,7 +417,7 @@ test("cancel requires confirmation and the backend determines final state", asyn
   ).not.toBeVisible();
 });
 
-test("admin edits movies using the existing API and placeholders never call absent APIs", async ({
+test("admin edits movies and opens the server-backed statistics screen", async ({
   page,
 }) => {
   const state = await mockApi(page);
@@ -435,7 +436,12 @@ test("admin edits movies using the existing API and placeholders never call abse
     durationMinutes: 120,
   });
   await page.getByRole("link", { name: "Thống kê" }).click();
-  await expect(page.getByText("Sắp có", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => state.requests.includes("/api/bookings/statistics"))
+    .toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Thống kê doanh thu" }),
+  ).toBeVisible();
   expect(
     state.requests.some((path) =>
       /\/api\/(cinemas|screens|seat-types)/.test(path),

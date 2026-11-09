@@ -1,6 +1,6 @@
 # Frontend project memory
 
-Updated: 2026-11-08. Read this file before continuing FE work.
+Updated: 2026-11-09. Read this file before continuing FE work.
 
 ## Agreed scope
 
@@ -24,21 +24,21 @@ Updated: 2026-11-08. Read this file before continuing FE work.
 | Registration / forgotten password            | Gateway routes enabled; full registration, resend, verify, forgot/reset connected                          | OTP sender wiring fix is included on this FE branch; carry it into deployment with these screens            |
 | Per-seat-type pricing                        | Merged and connected to live seat-type catalogue                                                           | Live hold verified override price 125000 rather than base price 90000                                       |
 | Combos                                       | Public/admin catalogue, create/update, activate/deactivate and booking replacement connected               | Backend controls totals and disallows changes while a payment link is pending                               |
-| Vouchers                                     | PR #35 is open for management/claim; not merged                                                                               | Add server-authoritative discount application when available                                                |
+| Vouchers                                     | Merged; management, assignment, claim, wallet and booking apply/remove connected                                                                               | Use backend totals; NOT_REQUIRED confirms zero-total bookings without PayOS                                                |
 | Profile updates                              | GET /api/users/me exists; update API missing                                                               | Replace read-only profile placeholder with an edit form                                                     |
 | Server logout                                | Cookie logout and current refresh-token revocation implemented                                                                       | Only the current browser session is revoked; issued access tokens expire normally                       |
 | Admin booking search                         | GET /api/bookings merged and connected to /admin/orders with code/status/user/showtime/date filters        | Search and pagination run on the server; private cache includes user identity                               |
-| Reporting                                    | No endpoints                                                                                               | Add real revenue statistics; do not derive totals from one page                                             |
+| Reporting                                    | Statistics and payment-history APIs merged and connected                                                                                               | Server totals grouped by showtime day/month/movie/cinema; payment filters and pagination are server-side                                             |
 | Ticket details                               | Booking response now includes ticket, named seats and combos                                               | Render stored ticket snapshot first; older bookings fall back to catalogue lookup                           |
-| Ticket check-in                              | No validation/check-in endpoint                                                                            | Add check-in only with server-issued validation; bookingCode is a reference, not a fabricated secure ticket |
-| Cancel paid showtime                         | No cross-service booking/refund workflow                                                                   | Coordinate cancellation policy with booking before offering automatic refunds                               |
+| Ticket check-in                              | Authenticated PNG QR and admin check-in APIs connected                                                                            | QR comes from the backend; explicit quantity/confirmation; failures never admit customers |
+| Cancel paid showtime                         | Showtime cancellation notifies booking; admin recovery API connected                                                                   | Display SHOWTIME_CANCELLED and voucher compensation; recovery reports partial failures                               |
 
-Existing booking endpoints: GET /bookings/showtimes/{id}/seats, POST /bookings,
+Core booking endpoints: GET /bookings/showtimes/{id}/seats, POST /bookings,
 GET /bookings/me, GET /bookings/{id}, POST /bookings/{id}/cancel,
 POST /bookings/{id}/payments, POST /payments/bookings/{id}/sync.
 Existing refund endpoints: GET /payments/refunds?status=..., POST
 /payments/refunds/{id}/complete. Refund completion records a manual transfer;
-it does not transfer money.
+it does not transfer money. Voucher refunds display their method and voucher ID; they have no manual-completion action.
 
 ## Integration rules
 
@@ -76,7 +76,15 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
 - `/admin/orders`: admin booking search with server-side pagination and filters.
 - `/admin/promotions`: combo create/update and activate/deactivate; customers can
   select combos in pending bookings before payment, using backend totals.
-- Vouchers, reports, profile editing and check-in remain explicit placeholders.
+- `/vouchers`: personal wallet and claim codes, including value vouchers from compensation.
+- `/admin/vouchers`: create/edit, activate/deactivate, assign to a customer, server pagination.
+- `/admin/reports`: server statistics by showtime date and grouping; no totals derived from a page.
+- `/admin/payments`: payment-history filters/pagination with manual/voucher refund details.
+- `/admin/check-in`: explicit code/quantity confirmation; server-authoritative admission history.
+- `/admin/cancellations`: explicit recovery for a cancelled showtime, with counts and partial failures.
+- Booking detail applies/removes vouchers, confirms zero-total orders through the payment API,
+  downloads authenticated QR images, and displays admitted counts / cancelled-showtime compensation.
+- Profile editing remains a placeholder because the update API is still unavailable.
 - `/admin/genres`, `/admin/persons`: searchable, paginated catalogue CRUD with
   delete confirmation and visible server conflicts.
 - `/admin/movies/:movieId`: genre assignment, actor/director credits and poster
@@ -104,7 +112,7 @@ GitHub: https://github.com/PhuNguyen12345/mss301-eMovie-ticket-booking-system-be
   called separately. PayOS webhooks are called by PayOS, never by FE.
 - Detail GETs for genres/persons/seat-types/seats remain available for future
   dedicated detail screens; current editors use the corresponding list records.
-  These are not missing backend APIs. Voucher PR #35 is now open (part 1/3); booking discount application is still pending.
+  These are not missing backend APIs. Historical audit: these voucher endpoints were not available then; they are connected in the 2026-11-09 update.
 
 ## Local verification
 
@@ -181,3 +189,35 @@ use normal `npm run dev` for real API mode. The demo cannot book or pay.
   master is integrated; no real payment or Cloudinary upload was performed.
 - Post-merge PayOS adapter tests: 4/4 pass. Live gateway rejects a webhook
   with missing signature with HTTP 400; booking-service is healthy after rebuild.
+
+## New API integration (2026-11-09)
+
+- FE branch merged master through `95b7c2d` (voucher, check-in, showtime cancellation,
+  statistics and payment history). BE architecture PR #44 is separate and is not
+  required by these HTTP contracts.
+- API clients validate new booking/payment states and fields. A NOT_REQUIRED response
+  must have zero amount and null transaction/checkout fields. QR uses bearer-authenticated
+  PNG fetches and revokes browser object URLs when released.
+- Private queries include user identity. Booking confirmation invalidates booking and
+  voucher caches so the wallet shows USED immediately. Writes have no automatic retries.
+- Browser tests cover apply/remove, seat-specific vouchers, zero-total confirmation,
+  failed QR/claim/application, voucher drafts and assignment, partial check-in and replay,
+  server reports/payment pagination, cancellation partial failures and role restrictions.
+- Final verification: 56 mocked browser tests, 37 unit tests, production build and
+  formatting pass, including wallet refresh after zero-total confirmation.
+- Live Chromium against gateway/MySQL verified voucher create/claim/apply,
+  NOT_REQUIRED confirmation and real QR PNG, check-in and duplicate rejection,
+  showtime cancellation/recovery, cancelled booking/wallet, statistics grouped by
+  movie and payment-history reads. No browser errors. Artifacts are runtime
+  `live-results/operations-report.json`, `operations-ticket-mobile.png`,
+  `operations-checkin.png` and `operations-reports.png`.
+- These live bookings used 100% ticket discounts, without a PayOS transaction.
+  Real PayOS checkout and Cloudinary uploads remain unverified; profile editing
+  still has no backend endpoint.
+- Current local backend uses executable JARs from the FE worktree mounted through
+  `/tmp/emovie-fe-live-jars.yml`. From the runtime directory, restart with
+  `docker compose -p emovie-local -f compose.yml -f compose.local.yml
+  -f /tmp/emovie-fe-live-jars.yml up -d --no-build`. The override is machine-local;
+  rebuild JARs with `mvn install -DskipTests` followed by `mvn -o -pl
+  discovery-server,api-gateway,services/booking-service,services/cinema-service,services/movie-service,services/user-service,services/showtime-service
+  package spring-boot:repackage -DskipTests` before recreating app containers.

@@ -96,7 +96,8 @@ booking availability and holds come from booking-service. The cinema admin scree
 manages physical facilities and seats, independently of sold/held seat inventory.
 Cinema/screen status changes do not automatically cancel or refund existing orders.
 
-Placeholder screens cover vouchers, reports, profile updates and ticket check-in.
+Voucher, reporting, payment history and check-in screens use the merged backend APIs.
+Profile editing remains a placeholder because no update endpoint is available.
 Movie editors include genres, actor/director credits and poster uploads/import.
 Reference pickers search and paginate on the server while preserving selected
 records across pages. Failed saves retain edits; navigation asks before discarding
@@ -140,7 +141,7 @@ multipart JPEG/PNG files up to 5 MiB; external storage needs Cloudinary credenti
   confirm payment. Returning users restore their session, then FE calls backend sync once
   and displays its result. Missing return identifiers lead to booking history.
 - Refund completion records a manual transfer after explicit confirmation. It
-  does not transfer money. No secure ticket QR is fabricated from bookingCode.
+  does not transfer money. QR images are fetched with authorization from the backend; the browser does not generate ticket codes.
 
 ## Structure
 
@@ -157,6 +158,8 @@ src/
   features/admin/      Movie management and refund workflows
   features/cinema/     Catalogue contracts/hooks, venue selectors and facility admin
   features/combos/     Combo catalogue/admin and booking selection
+  features/vouchers/   Wallet, claim, admin management and booking discounts
+  features/operations/ Check-in, statistics, payment history and cancellation recovery
   features/showtimes/  Schedule and price editing, HTTP/demo adapters
   lib/                 HTTP boundary, time utilities and navigation guards
 ```
@@ -195,3 +198,27 @@ PayOS payment and Cloudinary upload remain unverified without credentials.
 Live session checks against MySQL also verify reload, concurrent tabs, revocation
 of old cookies, payment-return restoration and synchronized logout. The report is
 in the local runtime's `live-results/session-report.json`.
+
+## Newly connected backend APIs
+
+| Screen                      | Route                  | Backend calls (under `/api`)                                                                   |
+| --------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| Voucher wallet              | `/vouchers`            | `GET /vouchers/me`, `POST /vouchers/claim`                                                     |
+| Voucher management          | `/admin/vouchers`      | `GET/POST /vouchers`, `PUT /vouchers/{id}`, `POST /vouchers/{id}/{activate,deactivate,assign}` |
+| Booking discounts           | `/bookings/:bookingId` | `POST /bookings/{id}/vouchers`, `DELETE /bookings/{id}/vouchers/{voucherId}`                   |
+| Ticket QR                   | `/bookings/:bookingId` | Authenticated PNG `GET /bookings/{id}/qr`                                                      |
+| Door check-in               | `/admin/check-in`      | `POST /bookings/check-in` after quantity confirmation                                          |
+| Revenue reports             | `/admin/reports`       | `GET /bookings/statistics?from=...&to=...&groupBy=...`                                         |
+| Payment history             | `/admin/payments`      | `GET /payments` with status, booking, order-code, date and page filters                        |
+| Cancelled-showtime recovery | `/admin/cancellations` | `POST /bookings/showtimes/{id}/cancellation` after confirmation                                |
+
+A voucher-covered booking is confirmed through the payment API. `NOT_REQUIRED`
+means no PayOS checkout is needed; only the refreshed booking confirms the ticket.
+The wallet and booking caches refresh after confirmation. The server computes all
+reductions and totals. Failed mutations preserve input and are never replayed.
+
+Check-in accepts manual entry or a hardware scanner typing into the code field;
+it does not request camera access. Staff explicitly confirm the number entering,
+and only a successful server response indicates admission. Cancelled-showtime
+recovery displays failed-booking counts rather than claiming the entire batch succeeded.
+Statistics use showtime dates; payment history uses transaction creation dates.

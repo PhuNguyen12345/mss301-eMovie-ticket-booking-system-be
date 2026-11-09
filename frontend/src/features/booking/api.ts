@@ -3,23 +3,64 @@ import type { HttpClient } from "../../lib/http";
 import { pageSchema, showtimeSchema } from "../showtimes/model/contracts";
 const id = z.number().int().positive().safe();
 const amount = z.number().finite().nonnegative();
-export const paymentSchema = z.object({
-  id,
-  bookingId: id,
-  orderCode: id,
-  provider: z.string(),
-  amount,
-  status: z.enum(["PENDING", "SUCCESS", "FAILED", "REFUNDED"]),
-  checkoutUrl: z.string().nullable(),
-  paidAt: z.string().nullable(),
-});
+export const paymentSchema = z.discriminatedUnion("status", [
+  z.object({
+    id,
+    bookingId: id,
+    orderCode: id,
+    provider: z.string(),
+    amount,
+    status: z.enum(["PENDING", "SUCCESS", "FAILED", "REFUNDED"]),
+    checkoutUrl: z.string().nullable(),
+    paidAt: z.string().nullable(),
+  }),
+  z.object({
+    id: z.null(),
+    bookingId: id,
+    orderCode: z.null(),
+    provider: z.null(),
+    amount: z.literal(0),
+    status: z.literal("NOT_REQUIRED"),
+    checkoutUrl: z.null(),
+    paidAt: z.null(),
+  }),
+]);
 export const bookingSchema = z.object({
   id,
   bookingCode: z.string(),
   userId: id,
   showtimeId: id,
-  status: z.enum(["PENDING_PAYMENT", "CONFIRMED", "CANCELLED", "EXPIRED"]),
+  status: z.enum([
+    "PENDING_PAYMENT",
+    "CONFIRMED",
+    "CANCELLED",
+    "EXPIRED",
+    "SHOWTIME_CANCELLED",
+  ]),
   totalAmount: amount,
+  subtotal: amount.optional(),
+  discountAmount: amount.optional(),
+  admittedCount: z.number().int().nonnegative().optional(),
+  showtimeCancelledAt: z.string().nullish(),
+  vouchers: z
+    .array(
+      z.object({
+        voucherId: id,
+        code: z.string(),
+        kind: z.enum([
+          "TICKET_EXCHANGE",
+          "TICKET_DISCOUNT",
+          "COMBO_EXCHANGE",
+          "COMBO_DISCOUNT",
+          "VALUE",
+        ]),
+        seatId: id.nullable(),
+        comboId: id.nullable(),
+        discountAmount: amount,
+        expiresOn: z.string(),
+      }),
+    )
+    .optional(),
   bookingTime: z.string(),
   expiredAt: z.string(),
   ticket: z
@@ -75,6 +116,8 @@ export const refundSchema = z.object({
   orderCode: id,
   amount,
   reason: z.string(),
+  method: z.enum(["MANUAL", "VOUCHER"]).optional(),
+  voucherId: id.nullish(),
   status: z.enum(["PENDING", "COMPLETED", "REJECTED"]),
   createdAt: z.string(),
   refundedAt: z.string().nullable(),
@@ -94,6 +137,20 @@ export type BookingSearch = {
 };
 export function createBookingApi(client: HttpClient) {
   return {
+    qr: (id: number, signal?: AbortSignal) =>
+      client.request(`/bookings/${id}/qr`, z.instanceof(Blob), {
+        signal,
+        responseType: "png",
+      }),
+    applyVoucher: (id: number, code: string, seatId?: number) =>
+      client.request(`/bookings/${id}/vouchers`, bookingSchema, {
+        method: "POST",
+        body: { code, seatId },
+      }),
+    removeVoucher: (id: number, voucherId: number) =>
+      client.request(`/bookings/${id}/vouchers/${voucherId}`, bookingSchema, {
+        method: "DELETE",
+      }),
     search: (filters: BookingSearch, signal?: AbortSignal) => {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {

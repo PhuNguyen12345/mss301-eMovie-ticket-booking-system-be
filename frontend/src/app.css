@@ -1024,3 +1024,122 @@ a.booking-card:hover {
   grid-column: 1 / -1;
   margin: 0;
 }
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.metric {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.metric span {
+  color: var(--muted);
+}
+.metric strong {
+  font-size: 1.5rem;
+  overflow-wrap: anywhere;
+}
+.report-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: 24px;
+}
+.report-table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+}
+.report-table caption {
+  text-align: left;
+  padding: 12px 0;
+  color: var(--muted);
+}
+.report-table th,
+.report-table td {
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.report-table thead {
+  background: var(--surface);
+}
+.report-table td {
+  text-align: right;
+}
+.payment-record,
+.check-in-result {
+  padding: 24px;
+}
+.payment-record p,
+.check-in-result p {
+  margin: 10px 0;
+}
+.booking-vouchers {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.booking-vouchers h3 {
+  margin-bottom: 8px;
+}
+.booking-vouchers form {
+  margin: 16px 0;
+}
+.booking-vouchers fieldset {
+  display: grid;
+  gap: 12px;
+}
+.voucher-applied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.voucher-applied span {
+  overflow-wrap: anywhere;
+}
+.ticket-qr {
+  margin-top: 24px;
+  text-align: center;
+}
+.ticket-qr img {
+  display: block;
+  margin: 16px auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.ticket-qr .muted {
+  max-width: 380px;
+  margin: 0 auto;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric {
+    padding: 14px;
+  }
+  .metric strong {
+    font-size: 1.2rem;
+  }
+  .payment-record,
+  .check-in-result {
+    padding: 16px;
+  }
+}

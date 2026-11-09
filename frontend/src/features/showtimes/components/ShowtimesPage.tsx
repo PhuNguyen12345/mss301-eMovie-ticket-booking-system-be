@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { useSession } from "../../../app/ServicesProvider";
@@ -70,6 +71,13 @@ export function ShowtimesPage() {
             void movies.refetch();
           }}
         />
+        {selected?.status === "CANCELLED" && session.mode === "api" && (
+          <p className="notice">
+            <Link to={`/admin/cancellations?showtimeId=${selected.id}`}>
+              Kiểm tra / xử lý lại đơn của suất #{selected.id} →
+            </Link>
+          </p>
+        )}
         <div className="schedule-workspace">
           <section className="schedule-panel" aria-label="Danh sách suất chiếu">
             <fieldset disabled={busy}>

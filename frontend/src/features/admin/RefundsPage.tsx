@@ -50,7 +50,8 @@ function RefundList() {
         <div>
           <h1>Hoàn tiền</h1>
           <p>
-            Ghi nhận khoản hoàn tiền sau khi nhân viên đã chuyển tiền cho khách.
+            Theo dõi hoàn voucher và ghi nhận khoản hoàn chuyển khoản đã thực
+            hiện.
           </p>
         </div>
         <Field label="Trạng thái hoàn tiền">
@@ -83,10 +84,15 @@ function RefundList() {
                 <h2>Đơn vé #{refund.bookingId}</h2>
                 <p className="muted">Giao dịch #{refund.orderCode}</p>
                 <p>{refund.reason}</p>
+                <p>
+                  {refund.method === "VOUCHER"
+                    ? `Hoàn bằng voucher #${refund.voucherId}`
+                    : "Hoàn chuyển khoản"}
+                </p>
               </div>
               <div>
                 <strong>{formatMoney(refund.amount)}</strong>
-                {refund.status === "PENDING" && (
+                {refund.status === "PENDING" && refund.method !== "VOUCHER" && (
                   <Button
                     onClick={() => {
                       mutation.reset();

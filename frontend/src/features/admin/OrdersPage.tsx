@@ -75,6 +75,7 @@ function OrderSearch() {
             <option value="CONFIRMED">Đã xác nhận</option>
             <option value="CANCELLED">Đã hủy</option>
             <option value="EXPIRED">Hết hạn</option>
+            <option value="SHOWTIME_CANCELLED">Suất chiếu đã hủy</option>
           </select>
         </Field>
         <Field label="ID khách hàng">

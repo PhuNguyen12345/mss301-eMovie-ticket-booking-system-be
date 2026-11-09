@@ -3,15 +3,8 @@ import { createBrowserRouter, Link, Navigate } from "react-router-dom";
 import { AppShell } from "../components/layout/AppShell";
 import { AdminLayout } from "../components/layout/AdminLayout";
 import { AccessGate } from "../components/layout/AccessGate";
-import { Placeholder } from "../components/ui/Placeholder";
 import { Loading } from "../components/ui/Feedback";
 
-const pending = (title: string) => (
-  <div className="page">
-    <h1>{title}</h1>
-    <Placeholder title={title} />
-  </div>
-);
 export const router = createBrowserRouter([
   {
     element: <AppShell />,
@@ -63,6 +56,13 @@ export const router = createBrowserRouter([
         lazy: async () => ({
           Component: (await import("../features/booking/PaymentReturnPage"))
             .PaymentReturnPage,
+        }),
+      },
+      {
+        path: "vouchers",
+        lazy: async () => ({
+          Component: (await import("../features/vouchers/MyVouchersPage"))
+            .MyVouchersPage,
         }),
       },
       {
@@ -159,7 +159,42 @@ export const router = createBrowserRouter([
                 .ComboAdminPage,
             }),
           },
-          { path: "reports", element: pending("Thống kê doanh thu") },
+          {
+            path: "reports",
+            lazy: async () => ({
+              Component: (await import("../features/operations/ReportsPage"))
+                .ReportsPage,
+            }),
+          },
+          {
+            path: "payments",
+            lazy: async () => ({
+              Component: (await import("../features/operations/PaymentsPage"))
+                .PaymentsPage,
+            }),
+          },
+          {
+            path: "check-in",
+            lazy: async () => ({
+              Component: (await import("../features/operations/CheckInPage"))
+                .CheckInPage,
+            }),
+          },
+          {
+            path: "cancellations",
+            lazy: async () => ({
+              Component: (
+                await import("../features/operations/CancellationsPage")
+              ).CancellationsPage,
+            }),
+          },
+          {
+            path: "vouchers",
+            lazy: async () => ({
+              Component: (await import("../features/vouchers/VoucherAdminPage"))
+                .VoucherAdminPage,
+            }),
+          },
         ],
       },
       {

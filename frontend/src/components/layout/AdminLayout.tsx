@@ -10,6 +10,10 @@ export function AdminLayout() {
         <NavLink to="/admin/cinema">Rạp & phòng</NavLink>
         <NavLink to="/admin/orders">Đơn vé</NavLink>
         <NavLink to="/admin/promotions">Combo & ưu đãi</NavLink>
+        <NavLink to="/admin/vouchers">Voucher</NavLink>
+        <NavLink to="/admin/check-in">Soát vé</NavLink>
+        <NavLink to="/admin/payments">Giao dịch</NavLink>
+        <NavLink to="/admin/cancellations">Suất đã hủy</NavLink>
         <NavLink to="/admin/reports">Thống kê</NavLink>
       </nav>
       <Outlet />

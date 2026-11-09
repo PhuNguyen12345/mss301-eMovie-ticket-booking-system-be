@@ -34,6 +34,7 @@ type ClientOptions = {
   timeoutMs?: number;
 };
 type RequestOptions = {
+  responseType?: "png";
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
@@ -69,7 +70,10 @@ export function createHttpClient(options: ClientOptions) {
             signal,
             credentials: request.cookieSession ? "include" : "omit",
             headers: {
-              Accept: "application/json",
+              Accept:
+                request.responseType === "png"
+                  ? "image/png"
+                  : "application/json",
               ...(request.body !== undefined &&
               !(request.body instanceof FormData)
                 ? { "Content-Type": "application/json" }
@@ -95,6 +99,29 @@ export function createHttpClient(options: ClientOptions) {
         );
       }
       if (response.status === 401 && token) options.onUnauthorized?.(token);
+      if (response.ok && request.responseType === "png") {
+        if (
+          response.headers.get("content-type")?.split(";")[0].trim() !==
+          "image/png"
+        )
+          throw new ApiError(
+            response.status,
+            "Ảnh vé trả về không hợp lệ.",
+            "INVALID_RESPONSE",
+          );
+        try {
+          const blob = await response.blob();
+          if (!blob.size) throw new Error("Empty image");
+          return schema.parse(blob);
+        } catch (error) {
+          if (request.signal?.aborted) throw error;
+          throw new ApiError(
+            response.status,
+            "Không tải được ảnh vé. Vui lòng thử lại.",
+            "INVALID_RESPONSE",
+          );
+        }
+      }
       let payload: unknown;
       try {
         payload = await response.json();

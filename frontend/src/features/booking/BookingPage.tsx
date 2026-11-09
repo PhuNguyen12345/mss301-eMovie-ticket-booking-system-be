@@ -8,7 +8,8 @@ import {
   ErrorMessage,
   EmptyState,
 } from "../../components/ui/Feedback";
-import { Placeholder } from "../../components/ui/Placeholder";
+import { TicketQr } from "./TicketQr";
+import { BookingVouchers } from "../vouchers/BookingVouchers";
 import { BookingCombos } from "../combos/BookingCombos";
 import { VenueName } from "../cinema/VenueName";
 import {
@@ -134,6 +135,7 @@ function BookingContent({
     try {
       const payment = await actions.pay.mutateAsync();
       if (!sessionId || session.getSnapshot()?.sessionId !== sessionId) return;
+      if (payment.status === "NOT_REQUIRED") return;
       window.location.assign(paymentUrl(payment.checkoutUrl));
     } catch (error) {
       setError(error);
@@ -201,6 +203,19 @@ function BookingContent({
               <dd>{formatMoney(combo.price * combo.quantity)}</dd>
             </div>
           ))}
+          {booking.discountAmount !== undefined &&
+            !booking.vouchers?.length && (
+              <div>
+                <dt>Giảm giá</dt>
+                <dd>−{formatMoney(booking.discountAmount)}</dd>
+              </div>
+            )}
+          {booking.vouchers?.map((v) => (
+            <div key={v.voucherId}>
+              <dt>Mã {v.code}</dt>
+              <dd>−{formatMoney(v.discountAmount)}</dd>
+            </div>
+          ))}
           <div className="total">
             <dt>Tổng tiền</dt>
             <dd>{formatMoney(booking.totalAmount)}</dd>
@@ -230,17 +245,28 @@ function BookingContent({
           </p>
         )}
         {booking.payment?.status === "SUCCESS" &&
-          booking.status !== "CONFIRMED" && (
+          booking.status !== "CONFIRMED" &&
+          booking.status !== "SHOWTIME_CANCELLED" && (
             <p className="notice">
               Đã ghi nhận tiền nhưng vé chưa được xác nhận. Vui lòng liên hệ rạp
               để kiểm tra việc hoàn tiền.
             </p>
           )}
-        <Placeholder
-          compact
-          title="Soát vé tại rạp"
-          description="Chức năng xác thực vé tại rạp đang được bổ sung."
-        />
+        {booking.status === "CONFIRMED" && (
+          <>
+            <p className="muted">
+              Đã vào rạp: {booking.admittedCount ?? 0} / {booking.seats.length}{" "}
+              khách
+            </p>
+            <TicketQr key={booking.id} bookingId={booking.id} />
+          </>
+        )}
+        {booking.status === "SHOWTIME_CANCELLED" && (
+          <p className="notice">
+            Rạp đã hủy suất chiếu này. Kiểm tra{" "}
+            <Link to="/vouchers">ví ưu đãi</Link> để xem voucher bù của bạn.
+          </p>
+        )}
       </section>
       <aside className="surface order-summary">
         <h2>{pending ? "Hoàn tất thanh toán" : "Trạng thái giao dịch"}</h2>
@@ -256,8 +282,9 @@ function BookingContent({
               </p>
             )}
             <p className="muted">
-              Bạn sẽ được chuyển đến PayOS để thanh toán. Không chuyển tiền lại
-              nếu giao dịch trước đang được xử lý.
+              {booking.totalAmount === 0
+                ? "Voucher đã thanh toán toàn bộ đơn. Bấm xác nhận để hệ thống xuất vé."
+                : "Bạn sẽ được chuyển đến PayOS để thanh toán. Không chuyển tiền lại nếu giao dịch trước đang được xử lý."}
             </p>
           </>
         )}
@@ -273,7 +300,9 @@ function BookingContent({
               void pay();
             }}
           >
-            Thanh toán qua PayOS
+            {booking.totalAmount === 0
+              ? "Xác nhận vé bằng voucher"
+              : "Thanh toán qua PayOS"}
           </Button>
         )}
         {isOwner && (
@@ -315,7 +344,18 @@ function BookingContent({
             save={actions.combos.mutateAsync}
           />
         )}
-        <Placeholder compact title="Mã ưu đãi" />
+        {pending && isOwner && (
+          <BookingVouchers
+            booking={booking}
+            actions={actions}
+            disabled={
+              busy ||
+              timer.expired ||
+              stale ||
+              booking.payment?.status === "PENDING"
+            }
+          />
+        )}
       </aside>
       {confirm && (
         <Dialog
