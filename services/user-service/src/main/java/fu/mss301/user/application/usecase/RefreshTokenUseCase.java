@@ -74,9 +74,7 @@ public class RefreshTokenUseCase implements RefreshTokenService {
         tokens.findByTokenHash(hash(rawToken)).ifPresent(token -> {
             if (Boolean.TRUE.equals(token.getRevoked())) return;
             var now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-            token.setRevoked(true);
-            token.setRevokedAt(now);
-            token.setUpdatedAt(now);
+            token.revoke(now);
             tokens.update(token);
         });
     }

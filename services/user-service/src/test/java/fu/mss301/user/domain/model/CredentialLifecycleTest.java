@@ -59,6 +59,18 @@ class CredentialLifecycleTest {
     }
 
     @Test
+    void logoutRevokesExpiredCredentialsAndPreservesOriginalRevocationTime() {
+        User user = User.builder().status("INACTIVE").build();
+        RefreshCredential token = RefreshCredential.builder().user(user).expiresAt(NOW.minusMinutes(1)).build();
+        token.revoke(NOW);
+        token.revoke(NOW.plusMinutes(1));
+        assertTrue(token.getRevoked());
+        assertEquals(NOW, token.getRevokedAt());
+        assertEquals(NOW, token.getUpdatedAt());
+        assertFalse(token.canRotate(NOW));
+    }
+
+    @Test
     void inactiveAccountCannotChangePassword() {
         User user = User.builder().status("INACTIVE").passwordHash("old").build();
         assertThrows(DomainException.class, () -> user.changePassword("new", NOW));
