@@ -56,20 +56,15 @@ public class RegistrationVerificationUseCase implements RegistrationVerification
         if (pending == null) {
             return VerificationResult.failure(StatusCode.NOT_FOUND, "Registration not found");
         }
-        if (pending.getConfirmedAt() != null) {
-            return VerificationResult.failure(StatusCode.CONFLICT, "Registration already confirmed");
-        }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (!pending.getExpiresAt().isAfter(now)) {
-            return VerificationResult.failure(StatusCode.GONE, "OTP has expired");
-        }
-        if (pending.getFailedAttempts() >= MAX_FAILED_ATTEMPTS) {
-            return VerificationResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts");
+        switch (pending.verificationState(now, MAX_FAILED_ATTEMPTS)) {
+            case USED -> { return VerificationResult.failure(StatusCode.CONFLICT, "Registration already confirmed"); }
+            case EXPIRED -> { return VerificationResult.failure(StatusCode.GONE, "OTP has expired"); }
+            case ATTEMPTS_EXHAUSTED -> { return VerificationResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts"); }
+            default -> { }
         }
         if (!passwordEncoder.matches(request.otp(), pending.getOtpHash())) {
-            int failedAttempts = pending.getFailedAttempts() + 1;
-            pending.setFailedAttempts(failedAttempts);
-            pending.setUpdatedAt(now);
+            int failedAttempts = pending.recordInvalidAttempt(now, MAX_FAILED_ATTEMPTS);
             pendingRepository.saveAndFlush(pending);
             return VerificationResult.failure(failedAttempts >= MAX_FAILED_ATTEMPTS
                     ? StatusCode.TOO_MANY_REQUESTS : StatusCode.BAD_REQUEST,
@@ -85,8 +80,7 @@ public class RegistrationVerificationUseCase implements RegistrationVerification
         User user = userRepository.createAndFlush(new UserStore.NewUser(
                 pending.getFullName(), pending.getEmail(), pending.getPhone(), pending.getPasswordHash(),
                 "ACTIVE", now, now, Set.of(customerRole)));
-        pending.setConfirmedAt(now);
-        pending.setUpdatedAt(now);
+        pending.confirm(now, MAX_FAILED_ATTEMPTS);
         pendingRepository.saveAndFlush(pending);
         return VerificationResult.success(new RegisterResponse(user.getId(), user.getFullName(),
                 user.getEmail(), user.getPhone(), user.getStatus()));

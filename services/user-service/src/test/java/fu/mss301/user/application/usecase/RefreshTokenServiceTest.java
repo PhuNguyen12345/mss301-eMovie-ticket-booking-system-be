@@ -30,7 +30,7 @@ class RefreshTokenServiceTest {
     private final UserStore users = mock(UserStore.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC);
     private final RefreshTokenService service = new RefreshTokenUseCase(tokens, users, clock, Duration.ofDays(30));
-    private final User user = User.builder().id(1).email("admin@gmail.com").fullName("Admin")
+    private User user = User.builder().id(1).email("admin@gmail.com").fullName("Admin")
             .status("ACTIVE").emailVerifiedAt(LocalDateTime.of(2026, 10, 1, 0, 0))
             .roles(Set.of(new UserRole(1, RoleName.ADMIN))).build();
 
@@ -98,7 +98,7 @@ class RefreshTokenServiceTest {
         when(users.getReferenceById(1)).thenReturn(user);
         String original = service.issue(1).token();
         clearInvocations(tokens);
-        user.setStatus("SUSPENDED");
+        user = user.toBuilder().status("SUSPENDED").build();
         var old = RefreshCredential.builder().user(user)
                 .expiresAt(LocalDateTime.of(2026, 10, 13, 7, 0)).revoked(false).build();
         when(tokens.findByTokenHash(sha256(original))).thenReturn(Optional.of(old));

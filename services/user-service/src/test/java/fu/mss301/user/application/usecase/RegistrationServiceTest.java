@@ -95,9 +95,9 @@ class RegistrationServiceTest {
     void resendReplacesOtpAndResetsFailedAttemptsEvenAfterExpiry() {
         UUID id = UUID.fromString("16c98f29-3b38-480f-b969-72eaf6c1ae09");
         Registration registration = pendingRegistration(id);
-        registration.setExpiresAt(LocalDateTime.ofInstant(now.minusSeconds(10), ZoneOffset.UTC));
-        registration.setFailedAttempts(5);
-        registration.setOtpDeliveryStatus(OtpDeliveryStatus.FAILED);
+        registration = registration.toBuilder().expiresAt(LocalDateTime.ofInstant(now.minusSeconds(10), ZoneOffset.UTC)).build();
+        registration = registration.toBuilder().failedAttempts(5).build();
+        registration = registration.toBuilder().otpDeliveryStatus(OtpDeliveryStatus.FAILED).build();
         when(pending.findByIdForUpdate(id.toString())).thenReturn(Optional.of(registration));
         when(generator.generate()).thenReturn("654321");
 
@@ -123,7 +123,7 @@ class RegistrationServiceTest {
     void cooldownReturnsRetryAfterWithoutChangingRegistration() {
         UUID id = UUID.fromString("16c98f29-3b38-480f-b969-72eaf6c1ae09");
         Registration registration = pendingRegistration(id);
-        registration.setNextOtpSendAt(LocalDateTime.ofInstant(now.plusSeconds(31), ZoneOffset.UTC));
+        registration = registration.toBuilder().nextOtpSendAt(LocalDateTime.ofInstant(now.plusSeconds(31), ZoneOffset.UTC)).build();
         when(pending.findByIdForUpdate(id.toString())).thenReturn(Optional.of(registration));
 
         UseCaseException error = assertThrows(UseCaseException.class,
@@ -140,7 +140,7 @@ class RegistrationServiceTest {
     void fifthResendIsAllowedButSixthIsRejected() {
         UUID id = UUID.fromString("16c98f29-3b38-480f-b969-72eaf6c1ae09");
         Registration registration = pendingRegistration(id);
-        registration.setResendCount(4);
+        registration = registration.toBuilder().resendCount(4).build();
         when(pending.findByIdForUpdate(id.toString())).thenReturn(Optional.of(registration));
         when(generator.generate()).thenReturn("654321");
 
@@ -158,7 +158,7 @@ class RegistrationServiceTest {
     void confirmedRegistrationCannotResend() {
         UUID id = UUID.fromString("16c98f29-3b38-480f-b969-72eaf6c1ae09");
         Registration registration = pendingRegistration(id);
-        registration.setConfirmedAt(LocalDateTime.ofInstant(now.minusSeconds(1), ZoneOffset.UTC));
+        registration = registration.toBuilder().confirmedAt(LocalDateTime.ofInstant(now.minusSeconds(1), ZoneOffset.UTC)).build();
         when(pending.findByIdForUpdate(id.toString())).thenReturn(Optional.of(registration));
 
         UseCaseException error = assertThrows(UseCaseException.class,
