@@ -13,6 +13,16 @@ import fu.mss301.booking.application.booking.SeatMapQuery;
 import fu.mss301.booking.application.booking.SeatMapView.Availability;
 import fu.mss301.booking.application.combo.ComboCommand;
 import fu.mss301.booking.application.combo.ComboService;
+import fu.mss301.booking.application.exception.ComboNotFoundException;
+import fu.mss301.booking.application.exception.VoucherNotFoundException;
+import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.application.voucher.VoucherCommand;
+import fu.mss301.booking.application.voucher.VoucherService;
+import fu.mss301.booking.domain.voucher.ClaimStatus;
+import fu.mss301.booking.domain.voucher.DiscountType;
+import fu.mss301.booking.domain.voucher.VoucherAvailability;
+import fu.mss301.booking.domain.voucher.VoucherCodeTakenException;
+import fu.mss301.booking.domain.voucher.VoucherKind;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
 import fu.mss301.booking.application.exception.PaymentGatewayException;
@@ -41,6 +51,7 @@ import fu.mss301.booking.domain.booking.SeatHoldStatus;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.combo.ComboStatus;
 import fu.mss301.booking.domain.payment.PaymentStatus;
+import fu.mss301.booking.domain.payment.RefundMethod;
 import fu.mss301.booking.domain.payment.RefundStatus;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 import jakarta.persistence.EntityManagerFactory;
@@ -98,6 +109,7 @@ class BookingServiceApplicationTests {
     @Autowired private RefundAdminUseCase refunds;
     @Autowired private MutableClock clock;
     @Autowired private ComboService comboService;
+    @Autowired private VoucherService voucherService;
     @Autowired private ReplaceBookingCombosUseCase replaceCombos;
     @Autowired private BookingRepository repository;
     @Autowired private Transactions transactions;
@@ -159,6 +171,103 @@ class BookingServiceApplicationTests {
     }
 
     @Test
+    void concurrentClaimsOfTheSameCodeLetExactlyOneWin() throws Exception {
+        var voucher = voucherService.create(voucherCommand(null));
+        var barrier = new CyclicBarrier(8);
+        var userIds = new AtomicLong(5000);
+        Callable<Boolean> attempt = () -> {
+            int userId = (int) userIds.incrementAndGet();
+            barrier.await(5, TimeUnit.SECONDS);
+            try {
+                voucherService.claim(userId, voucher.code());
+                return true;
+            } catch (VoucherNotFoundException exception) {
+                return false;
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(8)) {
+            long winners = 0;
+            for (var result : executor.invokeAll(java.util.Collections.nCopies(8, attempt))) if (result.get()) winners++;
+            assertEquals(1, winners);
+        }
+        assertNotNull(voucherService.get(voucher.id()).ownerId());
+    }
+
+    @Test
+    void voucherIsStoredWithItsTermsAndOwner() {
+        var today = java.time.LocalDate.now(clock);
+        int owner = (int) (SHOWTIME_IDS.incrementAndGet() % Integer.MAX_VALUE);
+        var created = voucherService.create(new VoucherCommand(null, VoucherKind.TICKET_EXCHANGE, null, null, today,
+            today.plusDays(3), null, 2, null));
+        assertTrue(created.code().startsWith("EM"));
+        assertEquals(new BigDecimal("100.00"), created.discountValue());
+        assertEquals(DiscountType.PERCENT, created.discountType());
+
+        var assigned = voucherService.assign(created.id(), owner);
+        assertEquals(owner, assigned.ownerId());
+        assertEquals(ClaimStatus.AVAILABLE, assigned.claimStatus());
+        var mine = voucherService.mine(owner);
+        assertEquals(1, mine.size());
+        assertEquals(created.code(), mine.getFirst().code());
+        assertEquals(VoucherAvailability.AVAILABLE, mine.getFirst().status());
+        assertTrue(voucherService.mine(owner + 1).isEmpty());
+    }
+
+    @Test
+    void usedUpKnownAndUnknownCodesAnswerTheSame() {
+        var today = java.time.LocalDate.now(clock);
+        var owned = voucherService.create(voucherCommand(null));
+        voucherService.assign(owned.id(), 7101);
+        var inactive = voucherService.create(voucherCommand(null));
+        voucherService.deactivate(inactive.id());
+        var expired = voucherService.create(new VoucherCommand(null, VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED,
+            new BigDecimal("1000"), today.minusDays(5), today.minusDays(1), null, null, null));
+
+        for (String code : List.of(owned.code(), inactive.code(), expired.code(), "NOT-A-REAL-CODE")) {
+            assertThrows(VoucherNotFoundException.class, () -> voucherService.claim(7102, code), code);
+        }
+        assertEquals(7101, voucherService.get(owned.id()).ownerId());
+    }
+
+    @Test
+    void customerTypesACodeInAnyCase() {
+        var voucher = voucherService.create(voucherCommand(null));
+        var claimed = voucherService.claim(7201, " " + voucher.code().toLowerCase(java.util.Locale.ROOT) + " ");
+        assertEquals(voucher.code(), claimed.code());
+    }
+
+    @Test
+    void aCodeCanOnlyExistOnce() {
+        String code = "DUP-" + System.nanoTime();
+        voucherService.create(voucherCommand(code));
+        assertThrows(VoucherCodeTakenException.class, () -> voucherService.create(voucherCommand(code)));
+    }
+
+    @Test
+    void voucherReferencesMustExist() {
+        var today = java.time.LocalDate.now(clock);
+        assertThrows(DomainException.class, () -> voucherService.create(new VoucherCommand(null,
+            VoucherKind.TICKET_EXCHANGE, null, null, today, today, null, 99, null)));
+        assertThrows(ComboNotFoundException.class, () -> voucherService.create(new VoucherCommand(null,
+            VoucherKind.COMBO_EXCHANGE, null, null, today, today, null, null, Integer.MAX_VALUE)));
+    }
+
+    @Test
+    void adminListIsPagedAndNewestFirst() {
+        var first = voucherService.create(voucherCommand(null));
+        var second = voucherService.create(voucherCommand(null));
+        var page = voucherService.list(0, 2);
+        assertEquals(List.of(second.id(), first.id()), page.content().stream().map(v -> v.id()).toList());
+        assertThrows(DomainException.class, () -> voucherService.list(0, 101));
+    }
+
+    private VoucherCommand voucherCommand(String code) {
+        var today = java.time.LocalDate.now(clock);
+        return new VoucherCommand(code, VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED, new BigDecimal("20000"), today,
+            today.plusDays(30), null, null, null);
+    }
+
+    @Test
     void holdPricesBySeatTypeAndRejectsUnusableSeats() {
         var booking = holdSeats.hold(7, showtimeId, List.of(101, 102));
         assertEquals(new BigDecimal("240000.00"), booking.totalAmount());
@@ -182,13 +291,13 @@ class BookingServiceApplicationTests {
         var confirmed = queries.getBooking(7, false, booking.id());
         assertEquals(BookingStatus.CONFIRMED, confirmed.status());
         assertEquals(SeatHoldStatus.BOOKED, confirmed.seats().getFirst().status());
-        assertEquals(PaymentStatus.SUCCESS, confirmed.payment().status());
+        assertEquals("SUCCESS", confirmed.payment().status());
         assertEquals(Availability.BOOKED, availability(101));
         assertTrue(refunds.list(RefundStatus.PENDING).stream().noneMatch(r -> r.bookingId().equals(booking.id())));
     }
 
     @Test
-    void expiryReleasesSeatsAndLatePaymentIsFlaggedForRefund() {
+    void expiryReleasesSeatsAndLatePaymentBecomesAVoucher() {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
 
@@ -197,7 +306,7 @@ class BookingServiceApplicationTests {
 
         var expired = queries.getBooking(7, false, booking.id());
         assertEquals(BookingStatus.EXPIRED, expired.status());
-        assertEquals(PaymentStatus.FAILED, expired.payment().status());
+        assertEquals("FAILED", expired.payment().status());
         verify(gateway).cancelLink(eq(payment.orderCode()), anyString());
         assertEquals(Availability.AVAILABLE, availability(101));
         assertNotNull(holdSeats.hold(8, showtimeId, List.of(101)), "released seat can be held again");
@@ -207,11 +316,12 @@ class BookingServiceApplicationTests {
         webhook.handle(Map.of());
 
         assertEquals(BookingStatus.EXPIRED, queries.getBooking(7, false, booking.id()).status());
-        var refund = refunds.list(RefundStatus.PENDING).stream()
+        assertEquals("REFUNDED", queries.getBooking(7, false, booking.id()).payment().status());
+        var refund = refunds.list(RefundStatus.COMPLETED).stream()
             .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
-        var completed = refunds.complete(refund.id());
-        assertEquals(RefundStatus.COMPLETED, completed.status());
-        assertEquals(PaymentStatus.REFUNDED, queries.getBooking(7, false, booking.id()).payment().status());
+        assertEquals(RefundMethod.VOUCHER, refund.method());
+        assertEquals(new BigDecimal("90000.00"), voucherService.get(refund.voucherId()).discountValue());
+        assertTrue(refunds.list(RefundStatus.PENDING).stream().noneMatch(r -> r.bookingId().equals(booking.id())));
     }
 
     @Test
@@ -251,14 +361,15 @@ class BookingServiceApplicationTests {
     }
 
     @Test
-    void refundRowKeepsItsIdWhenCompleted() {
+    void aManualRefundRecordedEarlierIsCompletedByHandAndKeepsItsId() {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
-        clock.advance(Duration.ofMinutes(6));
-        expireOverdue.expireOverdue(1000);
         when(gateway.verifyWebhook(any())).thenReturn(
             new VerifiedPayment(payment.orderCode(), 90000, true, "FT5", LocalDateTime.now(clock)));
         webhook.handle(Map.of());
+        // Before late payments became vouchers, they were left as pending manual refunds.
+        jdbc.update("insert into refunds (payment_id, amount, reason, method, status, created_at, updated_at) "
+            + "values (?, 90000, 'late', 'MANUAL', 'PENDING', now(6), now(6))", payment.id());
 
         var refund = refunds.list(RefundStatus.PENDING).stream()
             .filter(r -> r.bookingId().equals(booking.id())).findFirst().orElseThrow();
@@ -272,7 +383,7 @@ class BookingServiceApplicationTests {
         var booking = holdSeats.hold(7, showtimeId, List.of(101));
         var payment = initiatePayment.initiate(7, booking.id());
         cancelBooking.cancel(7, booking.id());
-        assertEquals(PaymentStatus.FAILED, queries.getBooking(7, false, booking.id()).payment().status());
+        assertEquals("FAILED", queries.getBooking(7, false, booking.id()).payment().status());
         verify(gateway).cancelLink(eq(payment.orderCode()), anyString());
     }
 
@@ -525,7 +636,7 @@ class BookingServiceApplicationTests {
         assertEquals(withoutPayment.id(), found.getFirst().id());
         assertNull(found.getFirst().payment());
         assertEquals(latest.id(), found.getLast().payment().id());
-        assertEquals(PaymentStatus.PENDING, found.getLast().payment().status());
+        assertEquals("PENDING", found.getLast().payment().status());
         assertEquals(latest.id(), queries.myBookings(user, 0, 10).content().getLast().payment().id());
     }
 

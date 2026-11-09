@@ -19,9 +19,16 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | GET | `/api/bookings/{id}` | Chủ booking / ADMIN | Chi tiết booking + lần thanh toán gần nhất | 200 |
 | POST | `/api/bookings/{id}/cancel` | Chủ booking | Hủy booking đang chờ thanh toán, nhả ghế | 200 |
 | PUT | `/api/bookings/{id}/combos` | Chủ booking | Thay toàn bộ combo của booking, tính lại tổng tiền | 200 |
-| POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS | 200 |
+| POST | `/api/bookings/{id}/vouchers` | Chủ booking | Áp voucher, tính lại tổng tiền | 200 |
+| DELETE | `/api/bookings/{id}/vouchers/{voucherId}` | Chủ booking | Gỡ voucher, trả lại lượt dùng | 200 |
+| GET | `/api/bookings/{id}/qr` | Chủ booking / ADMIN | Ảnh PNG mã QR của vé đã thanh toán | 200 |
+| POST | `/api/bookings/check-in` | ADMIN | Soát vé tại rạp bằng mã đặt vé | 200 |
+| POST | `/api/bookings/showtimes/{showtimeId}/cancellation` | ADMIN | Xử lý booking của suất chiếu đã hủy | 200 |
+| GET | `/api/bookings/statistics?from=&to=&groupBy=day` | ADMIN | Doanh thu và vé bán theo ngày chiếu, tháng, phim hoặc rạp | 200 |
+| POST | `/api/bookings/{id}/payments` | Chủ booking | Tạo (hoặc lấy lại) link thanh toán PayOS. Đơn 0đ được xác nhận luôn | 200 |
 | POST | `/api/payments/bookings/{bookingId}/sync` | Chủ booking | Hỏi PayOS trạng thái thật rồi trả booking | 200 |
 | POST | `/api/payments/payos/webhook` | Public (verify chữ ký) | PayOS báo kết quả thanh toán | 200 |
+| GET | `/api/payments?status=&from=&to=&bookingId=&orderCode=&page=0&size=20` | ADMIN | Lịch sử mọi giao dịch, kể cả giao dịch đã hoàn (mới nhất trước) | 200 |
 | GET | `/api/payments/refunds?status=PENDING` | ADMIN | Danh sách yêu cầu hoàn tiền | 200 |
 | POST | `/api/payments/refunds/{id}/complete` | ADMIN | Đánh dấu đã hoàn tiền thủ công | 200 |
 | GET | `/api/combos` | Public | Combo đang bán | 200 |
@@ -30,6 +37,15 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | PUT | `/api/combos/{id}` | ADMIN | Sửa tên, mô tả, giá | 200 |
 | POST | `/api/combos/{id}/activate` | ADMIN | Mở bán lại | 200 |
 | POST | `/api/combos/{id}/deactivate` | ADMIN | Ngừng bán | 200 |
+| GET | `/api/vouchers` | ADMIN | Danh sách voucher, phân trang | 200 |
+| GET | `/api/vouchers/{id}` | ADMIN | Chi tiết voucher | 200 |
+| POST | `/api/vouchers` | ADMIN | Tạo voucher | 201 + `Location` |
+| PUT | `/api/vouchers/{id}` | ADMIN | Sửa voucher chưa có chủ | 200 |
+| POST | `/api/vouchers/{id}/activate` | ADMIN | Bật voucher | 200 |
+| POST | `/api/vouchers/{id}/deactivate` | ADMIN | Tắt voucher | 200 |
+| POST | `/api/vouchers/{id}/assign` | ADMIN | Gán voucher cho một tài khoản | 200 |
+| GET | `/api/vouchers/me` | Đăng nhập | Voucher của tôi | 200 |
+| POST | `/api/vouchers/claim` | Đăng nhập | Nhập mã để nhận voucher | 200 |
 
 ### Mã lỗi chung
 
@@ -96,6 +112,8 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
     "userId": 7,
     "showtimeId": 15,
     "status": "PENDING_PAYMENT",
+    "subtotal": 240000.00,
+    "discountAmount": 0.00,
     "totalAmount": 240000.00,
     "bookingTime": "2027-01-20T18:00:00",
     "expiredAt": "2027-01-20T18:05:00",
@@ -112,6 +130,8 @@ Booking giữ ghế trong `BOOKING_HOLD_TTL` (mặc định `PT5M`), hết hạn
       {"seatId": 102, "rowCode": "C", "seatNumber": 1, "seatTypeName": "Ghế VIP", "price": 150000.00, "status": "HELD"}
     ],
     "combos": [],
+    "vouchers": [],
+    "admittedCount": 0,
     "payment": null
   }
 }
@@ -138,6 +158,20 @@ Booking tạo trước khi có tính năng này trả `ticket: null`, các field
 - Chỉ khi booking `PENDING_PAYMENT` và chưa quá `expiredAt`.
 - Nếu đã có link đang chờ thanh toán → trả lại link cũ (gọi nhiều lần không tạo link mới).
 - `orderCode = bookingId * 100 + số lần thử` (tối đa 99 lần), link PayOS hết hạn cùng lúc với booking.
+- Voucher đã qua ngày cuối được gỡ trước khi tạo link, nên số tiền có thể cao hơn lúc khách áp mã. Link đã mở thì giữ giá.
+- Voucher trả hết tiền (`totalAmount` = 0): booking chuyển `CONFIRMED` ngay, không tạo link và không có dòng thanh toán. Response khi đó:
+
+```json
+{
+  "status": 200,
+  "message": "Booking confirmed, vouchers cover the whole amount",
+  "data": {"id": null, "bookingId": 12, "orderCode": null, "provider": null, "amount": 0.00,
+           "status": "NOT_REQUIRED", "checkoutUrl": null, "paidAt": null}
+}
+```
+
+Booking đó có `payment: null`. FE kiểm tra `status` để không redirect sang PayOS.
+- Số tiền phải trả phải là 0 hoặc từ 2.000đ, vì ngân hàng không nhận chuyển khoản nhỏ hơn. Nếu bớt combo làm tổng còn từ 1đ đến 1.999đ thì trả 400 và không tạo link, khách cần gỡ voucher hoặc thêm combo.
 
 ```json
 {
@@ -176,7 +210,20 @@ Bảng `refunds` chỉ dùng cho **lỗi phía hệ thống**, khi tiền đã v
 - Tiền về sau khi booking đã `EXPIRED` hoặc `CANCELLED`.
 - Một booking được thanh toán thành công 2 lần.
 
-Hệ thống tự tạo `refunds` trạng thái `PENDING`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete` → refund `COMPLETED`, payment `REFUNDED`. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
+Số tiền này được trả lại cho khách bằng **voucher giá trị** (`VALUE`), không chuyển khoản:
+
+1. Hệ thống phát voucher bằng đúng số tiền đã nhận cho chủ booking, dùng được 90 ngày kể từ hôm nay (`BOOKING_VALUE_VOUCHER_TTL`). Khách thấy voucher ở `GET /api/vouchers/me`. Hệ thống chưa gửi email.
+2. Tạo `refunds` với `method: VOUCHER`, `voucherId`, trạng thái `COMPLETED` luôn, và payment chuyển `REFUNDED`.
+
+Mỗi payment chỉ ra tối đa một voucher, kể cả khi PayOS gửi webhook nhiều lần hoặc job đối soát chạy lại.
+
+```json
+{"id": 9, "paymentId": 39, "bookingId": 163, "orderCode": 16301, "amount": 240000.00,
+ "reason": "Booking 163 could not be confirmed with this payment, given back as voucher EMMY624MAUZT7R",
+ "method": "VOUCHER", "voucherId": 32, "status": "COMPLETED"}
+```
+
+Refund `PENDING` tạo trước thay đổi này có `method: MANUAL`. Nhân viên chuyển khoản trả lại rồi gọi `POST /api/payments/refunds/{id}/complete`. Gọi API này với refund `VOUCHER` trả 409. Hệ thống không tích hợp API chi hộ (Payouts) của PayOS.
 
 ### 2.7 Combo
 
@@ -252,6 +299,272 @@ curl "http://localhost:8080/api/bookings?status=CONFIRMED&from=2027-01-20T00:00:
 | 401 | Chưa đăng nhập |
 | 403 | Không phải ADMIN |
 
+### 2.9 Voucher
+
+Một mã thuộc một tài khoản và dùng một lần. Voucher giá trị (`VALUE`) do hệ thống phát thẳng cho khách: khi tiền về mà không xuất được vé (mục 2.6), và khi voucher giá trị chưa dùng hết.
+
+**Phần dư của voucher giá trị.** Khi booking dùng voucher giá trị được thanh toán, phần chưa dùng thành một voucher giá trị mới cho cùng khách, hạn 90 ngày tính từ hôm đó. Ví dụ voucher 240.000đ trả cho đơn 90.000đ thì khách nhận thêm voucher 150.000đ. Mỗi booking ra tối đa một voucher phần dư.
+
+Admin xem nguồn của voucher giá trị qua `sourcePaymentId` (payment được trả lại) và `sourceBookingId` (booking để lại phần dư) trong `GET /api/vouchers/{id}`.
+
+| `kind` | Áp dụng cho |
+| --- | --- |
+| `TICKET_EXCHANGE` | 1 vé, thay toàn bộ giá vé, có thể giới hạn theo loại ghế |
+| `TICKET_DISCOUNT` | Tổng giá vé của booking, tiền cố định hoặc % |
+| `COMBO_EXCHANGE` | 1 suất của đúng 1 loại combo |
+| `COMBO_DISCOUNT` | Tổng tiền combo của booking, tiền cố định hoặc % |
+| `VALUE` | Toàn bộ đơn. Hệ thống tự phát, admin không tạo được |
+
+**Quản lý voucher (ADMIN).** Body của `POST /api/vouchers` và `PUT /api/vouchers/{id}`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `code` | string | Tùy chọn, 4 đến 50 ký tự gồm chữ, số, dấu gạch ngang. Để trống thì tự sinh. `PUT` bỏ qua field này |
+| `kind` | string | Bắt buộc |
+| `discountType` | string | `FIXED` hoặc `PERCENT`. Bắt buộc với voucher giảm giá, voucher đổi luôn là 100% |
+| `discountValue` | number | `FIXED`: số tiền nguyên từ 1 đến 99.999.999. `PERCENT`: số nguyên từ 1 đến 100 |
+| `startDate`, `endDate` | date | Bắt buộc, `endDate` là ngày cuối còn dùng được |
+| `minOrderAmount` | number | Tùy chọn, chỉ cho voucher giảm giá |
+| `seatTypeId` | number | Tùy chọn, chỉ cho voucher vé, phải tồn tại ở cinema-service |
+| `comboId` | number | Bắt buộc với `COMBO_EXCHANGE`, các loại khác không được có |
+
+```bash
+curl -X POST http://localhost:8080/api/vouchers \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"kind":"TICKET_DISCOUNT","discountType":"PERCENT","discountValue":10,
+       "startDate":"2027-01-01","endDate":"2027-01-31","minOrderAmount":100000}'
+```
+
+```json
+{
+  "id": 5, "code": "EM7K2QXPLM4R9T", "kind": "TICKET_DISCOUNT",
+  "discountType": "PERCENT", "discountValue": 10.00,
+  "startDate": "2027-01-01", "endDate": "2027-01-31", "minOrderAmount": 100000.00,
+  "seatTypeId": null, "comboId": null, "status": "ACTIVE", "ownerId": null, "claimStatus": null
+}
+```
+
+Voucher đã có chủ thì không sửa được, để giá trị của khách không bị đổi. Không có API xóa, dùng `deactivate` để tắt.
+
+`POST /api/vouchers/{id}/assign` với `{"userId": 7}` gán mã cho một tài khoản. Booking-service không kiểm tra `userId` có tồn tại, vì hiện không gọi user-service.
+
+**Khách hàng**
+- `GET /api/vouchers/me`: voucher của tôi, mới nhất trước. `status` là `AVAILABLE`, `RESERVED`, `USED`, `EXPIRED` hoặc `INACTIVE`.
+- `POST /api/vouchers/claim` với `{"code": "EM7K2QXPLM4R9T"}`: nhập mã để nhận về tài khoản, không phân biệt hoa thường.
+
+| Lỗi | Khi nào |
+| --- | --- |
+| 400 | Sai ràng buộc ở trên, `seatTypeId` không tồn tại |
+| 403 | Khách gọi API quản lý |
+| 404 | Không có voucher hoặc combo. `claim` cũng trả 404 khi mã đã có chủ, đã tắt hoặc hết hạn, để không lộ mã nào có thật |
+| 409 | Trùng `code`, sửa voucher đã có chủ, gán voucher đã có chủ, đã tắt hoặc hết hạn |
+
+### 2.10 Áp voucher vào booking
+
+`POST /api/bookings/{id}/vouchers`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `code` | string | Bắt buộc, không phân biệt hoa thường. Mã phải thuộc tài khoản đang đăng nhập |
+| `seatId` | number | Bắt buộc với `TICKET_EXCHANGE`: ghế được trả tiền. Các loại khác không gửi |
+
+```bash
+curl -X POST http://localhost:8080/api/bookings/12/vouchers \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"code": "EM7K2QXPLM4R9T", "seatId": 102}'
+```
+
+Trả về booking đã tính lại tiền:
+
+```json
+{
+  "subtotal": 240000.00,
+  "discountAmount": 150000.00,
+  "totalAmount": 90000.00,
+  "vouchers": [
+    {"voucherId": 9, "code": "EM7K2QXPLM4R9T", "kind": "TICKET_EXCHANGE", "seatId": 102, "comboId": null,
+     "discountAmount": 150000.00, "expiresOn": "2027-01-31"}
+  ]
+}
+```
+
+`subtotal` là tiền ghế cộng combo. `totalAmount = subtotal - discountAmount` là số tiền gửi sang PayOS.
+
+`DELETE /api/bookings/{id}/vouchers/{voucherId}` gỡ voucher, trả về booking và voucher quay lại `AVAILABLE`.
+
+**Cách tính.** Voucher được tính theo thứ tự cố định, nên tổng tiền không bao giờ âm:
+
+1. `TICKET_EXCHANGE`: trừ đúng giá ghế đã chọn. Mỗi ghế một mã, ghế phải đúng `seatTypeId` nếu voucher có.
+2. `TICKET_DISCOUNT`: trên tổng giá các ghế chưa được đổi. Nếu voucher có `seatTypeId` thì chỉ tính ghế loại đó.
+3. `COMBO_EXCHANGE`: trừ giá một suất của combo trên voucher. Số mã tối đa bằng số suất.
+4. `COMBO_DISCOUNT`: trên tiền combo còn lại sau bước 3.
+5. `VALUE`: trên số tiền còn lại.
+
+Sau khi áp, số còn phải trả phải là 0 hoặc từ 2.000đ, nếu không voucher bị từ chối. Giảm theo % làm tròn xuống đồng. Giảm cố định không vượt phần tiền nó được tính trên, phần dư mất. `minOrderAmount` so với đúng phần tiền đó, ví dụ `COMBO_DISCOUNT` so với tiền combo. Mỗi booking dùng tối đa một mã mỗi loại `TICKET_DISCOUNT`, `COMBO_DISCOUNT`, `VALUE`.
+
+**Khi combo thay đổi.** `PUT /api/bookings/{id}/combos` tính lại mọi voucher. Voucher không còn áp được sẽ tự gỡ và trả lại lượt: `COMBO_DISCOUNT` khi tiền combo dưới `minOrderAmount` hoặc hết combo, `COMBO_EXCHANGE` dư khi bớt suất. Response không còn voucher đó trong `vouchers`.
+
+**Vòng đời voucher của khách** (`GET /api/vouchers/me`):
+
+| Sự kiện | `status` |
+| --- | --- |
+| Áp vào booking | `RESERVED` |
+| Booking được thanh toán | `USED` |
+| Gỡ khỏi booking, booking bị hủy hoặc hết hạn | `AVAILABLE`. Voucher đã qua ngày cuối thì hiện `EXPIRED` |
+
+Chỉ áp hoặc gỡ được khi booking `PENDING_PAYMENT`, còn hạn giữ ghế và chưa có link thanh toán. Nếu tạo link lỗi, payment `FAILED` và có thể sửa voucher rồi thanh toán lại.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Thiếu `code`, số còn phải trả từ 1đ đến 1.999đ, voucher hết hạn hoặc chưa tới ngày, sai loại ghế, booking không có combo của voucher, chưa đủ `minOrderAmount`, đã có một mã cùng loại, voucher làm mã khác trên booking không còn đủ điều kiện |
+| 404 | Không có booking của tôi, mã không thuộc tôi, gỡ voucher không có trên booking |
+| 409 | Booking không còn chờ thanh toán, đã có link thanh toán, voucher đã dùng hoặc đang ở booking khác, voucher đã tắt |
+
+### 2.11 Mã QR và check-in tại rạp
+
+**Mã QR cho khách.** `GET /api/bookings/{id}/qr` trả ảnh PNG 300x300, nội dung là `bookingCode`. Chỉ chủ booking hoặc ADMIN xem được, và chỉ khi booking `CONFIRMED`. Request cần JWT, nên FE tải ảnh bằng `fetch` rồi gán `URL.createObjectURL(blob)` cho thẻ `img`.
+
+**Soát vé (ADMIN).** Một mã đại diện cho cả booking. Đoàn đến lệch giờ thì nhân viên ghi số người vào, người đến sau quét lại chính mã đó.
+
+`POST /api/bookings/check-in`:
+
+| Field | Kiểu | Ràng buộc |
+| --- | --- | --- |
+| `bookingCode` | string | Bắt buộc, không phân biệt hoa thường |
+| `quantity` | number | Tùy chọn, số người vào lần này. Bỏ trống là toàn bộ số người còn lại |
+
+```json
+{
+  "bookingCode": "BK2611081431005BSKBM", "status": "CONFIRMED", "movieTitle": "Dune",
+  "cinemaName": "Rạp Hà Nội", "screenName": "Phòng chiếu 1", "startTime": "2027-01-21T19:00:00",
+  "seats": [{"seatId": 101, "rowCode": "A", "seatNumber": 1, "seatTypeName": "Ghế thường"}],
+  "seatCount": 3, "admittedCount": 2, "remaining": 1,
+  "checkIns": [{"quantity": 2, "checkedInAt": "2027-01-21T18:50:00", "checkedInBy": 1}]
+}
+```
+
+Khung giờ check-in: từ 15 phút trước giờ chiếu (`BOOKING_CHECK_IN_OPENS_BEFORE`) đến 20 phút sau giờ chiếu (`BOOKING_CHECK_IN_CLOSES_AFTER`), tính cả hai mốc. Giờ chiếu lấy theo thông tin in trên vé. Booking tạo trước khi lưu bản sao vé thì hỏi showtime-service.
+
+Hai máy quét cùng lúc thì lần lượt được xử lý, tổng số người không bao giờ vượt số ghế. `BookingView` có thêm `admittedCount` để khách thấy đã vào bao nhiêu người.
+
+| HTTP | Khi nào |
+| --- | --- |
+| 400 | Thiếu mã, `quantity` nhỏ hơn 1 hoặc lớn hơn số người còn lại |
+| 403 | Không phải ADMIN |
+| 404 | Không có booking với mã này. QR của booking không phải của mình |
+| 409 | Booking chưa thanh toán, ngoài khung giờ (message ghi giờ mở và đóng), hoặc mọi người đã vào. Trường hợp đã vào hết, `data` chứa thông tin như trên, kèm các lần quét trước |
+
+### 2.12 Suất chiếu bị hủy
+
+Khi admin hủy suất chiếu (`POST /api/showtimes/{id}/cancel`), showtime-service gọi `POST /internal/showtimes/{id}/cancellation` của booking-service ngay sau khi lưu. Booking-service xử lý mọi booking của suất đó:
+
+| Booking | Xử lý |
+| --- | --- |
+| `PENDING_PAYMENT` | Chuyển `CANCELLED`, đóng link PayOS, trả voucher đang giữ. Tiền về sau đó được trả bằng voucher như mục 2.6 |
+| `CONFIRMED` | Chuyển `SHOWTIME_CANCELLED`, nhả ghế, bù cho khách như dưới |
+
+**Bù cho booking đã thanh toán.** Không hoàn tiền mặt, mọi khoản trả bằng voucher dùng được 90 ngày:
+
+| Voucher | Giá trị | Khi nào |
+| --- | --- | --- |
+| `COMBO_DISCOUNT` `FIXED` | Tiền combo đã trả | Booking có combo |
+| `VALUE` | Phần tiền còn lại, cộng phần voucher giá trị đã trừ | Còn tiền để trả |
+| `TICKET_EXCHANGE` | 1 vé, mọi loại ghế | Hủy sát giờ |
+| `COMBO_DISCOUNT` `FIXED` | Đơn giá combo đắt nhất trong booking | Hủy sát giờ và booking có combo |
+
+- **Hủy sát giờ:** hủy khi còn dưới 2 tiếng trước giờ chiếu, hoặc sau khi đã chiếu (`BOOKING_SHOWTIME_CANCEL_NOTICE`, mặc định `PT2H`). Giờ chiếu lấy theo thông tin in trên vé.
+- **Voucher đã dùng cho booking:** đổi vé, giảm vé, đổi combo, giảm combo quay về `AVAILABLE`. Voucher giá trị vẫn `USED`, phần nó đã trừ nằm trong voucher `VALUE` ở trên.
+- **Payment:** chuyển `REFUNDED`, mỗi voucher hoàn tiền là một dòng `refunds` `method: VOUCHER`. Tổng các dòng bằng số tiền đã trả.
+- **Admin:** `GET /api/vouchers/{id}` có `sourceBookingId` và `sourceReason` (`SHOWTIME_REFUND`, `SHOWTIME_COMBO_REFUND`, `APOLOGY_TICKET`, `APOLOGY_COMBO`, `REMAINDER`).
+- **Khách:** thấy booking `SHOWTIME_CANCELLED` kèm `showtimeCancelledAt`, và voucher mới ở `GET /api/vouchers/me`. Hệ thống chưa gửi thông báo.
+
+**Chạy lại.** `POST /api/bookings/showtimes/{showtimeId}/cancellation` (ADMIN) chạy lại toàn bộ xử lý trên cho một suất đã hủy. Gọi bao nhiêu lần cũng không bù trùng.
+
+```json
+{"showtimeId": 34, "cancelledPending": 1, "cancelledPaid": 1, "failed": 0}
+```
+
+Suất chưa bị hủy trả 409. Showtime-service gọi booking-service ở luồng nền, nên API hủy suất không chờ xử lý booking. Nếu lời gọi lỗi, ví dụ booking-service đang tắt, suất vẫn được hủy, showtime-service chỉ ghi log `WARN` và admin chạy lại bằng API trên. Hủy lại một suất đã hủy cũng gọi lại booking-service. Job bảo trì bù tiếp những booking đã chuyển `SHOWTIME_CANCELLED` nhưng chưa bù xong.
+
+### 2.13 Thống kê doanh thu (ADMIN)
+
+`GET /api/bookings/statistics?from=2026-11-01&to=2026-11-30&groupBy=movie`
+
+| Tham số | Bắt buộc | Ý nghĩa |
+| --- | --- | --- |
+| `from`, `to` | Có | Ngày chiếu đầu và cuối, `yyyy-MM-dd`, tính cả hai ngày. Tối đa 366 ngày |
+| `groupBy` | Không | `day` (mặc định), `month`, `movie` hoặc `cinema`, không phân biệt hoa thường |
+
+Doanh thu tính theo **ngày chiếu** trên vé, giờ `Asia/Ho_Chi_Minh`, không theo ngày thanh toán. Vé bán trước cho suất tương lai nằm ở ngày chiếu đó.
+
+```json
+{
+  "from": "2026-11-01", "to": "2026-11-30", "groupBy": "MOVIE",
+  "total": {"bookings": 3, "tickets": 4, "ticketAmount": 420000.00, "comboAmount": 170000.00,
+            "discountAmount": 74000.00, "revenue": 516000.00, "refundedAmount": 220000.00},
+  "rows": [
+    {"key": "25", "label": "Mai", "figures": {"bookings": 2, "tickets": 3, "ticketAmount": 330000.00, "comboAmount": 170000.00,
+                                              "discountAmount": 114000.00, "revenue": 386000.00, "refundedAmount": 90000.00}}
+  ]
+}
+```
+
+| Cột | Cách tính |
+| --- | --- |
+| `bookings` | Số booking `CONFIRMED`, kể cả booking đã check-in |
+| `tickets` | Số ghế `BOOKED` của các booking đó |
+| `ticketAmount` | Tổng giá ghế, trước giảm giá |
+| `comboAmount` | Tổng số lượng × đơn giá combo, trước giảm giá |
+| `discountAmount` | Tổng tiền voucher đã trừ, gồm cả voucher giá trị |
+| `revenue` | Tổng payment `SUCCESS`. Đơn 0đ có doanh thu 0 |
+| `refundedAmount` | Tổng payment `REFUNDED` của mọi booking trong nhóm, chỉ để tham khảo |
+
+- **Chỉ tính booking `CONFIRMED`.** Booking `PENDING_PAYMENT`, `CANCELLED`, `EXPIRED`, `SHOWTIME_CANCELLED` không vào doanh thu.
+- **Payment `REFUNDED` không vào doanh thu.** Đó là tiền về trễ hoặc tiền của suất bị hủy, đã trả lại khách bằng voucher. Payment và dòng `refunds` vẫn được giữ, chỉ hiện ở cột `refundedAmount`, và xem từng giao dịch ở mục 2.14.
+- **Voucher tách khỏi doanh thu.** Với mỗi nhóm, `ticketAmount + comboAmount − discountAmount = revenue`. Voucher giá trị là tiền khách đã trả từ trước, nên tính lại sẽ bị đếm 2 lần.
+- **Thứ tự dòng:** `day` và `month` theo ngày tăng dần. `movie` và `cinema` theo doanh thu giảm dần.
+- **Nhóm rỗng:** chỉ trả nhóm có booking hoặc có tiền hoàn. Không có dữ liệu thì `rows` rỗng và `total` bằng 0.
+- **Nhãn:** `key` là `2026-11-08` theo ngày, `2026-11` theo tháng, mã phim hoặc mã rạp theo phim và rạp. `label` của phim và rạp là tên in trên vé. Booking chưa có mã phim hoặc mã rạp gom vào dòng `key: null`, `label: "Không rõ"`.
+- **Booking cũ:** job bảo trì điền thông tin vé cho booking tạo trước khi vé được lưu, và mã phim, mã rạp cho booking trước `V9`. Job chạy 1 phút sau khi service khởi động, rồi mỗi 5 phút. Vé đã có thông tin thì giữ nguyên, chỉ thêm mã.
+
+Lỗi: khách gọi nhận 403. Thiếu `from` hoặc `to`, `from` sau `to`, quá 366 ngày, sai định dạng ngày hoặc `groupBy` lạ thì nhận 400.
+
+### 2.14 Lịch sử giao dịch (ADMIN)
+
+`GET /api/payments?status=REFUNDED&from=2026-11-01&to=2026-11-30&page=0&size=20`
+
+| Tham số | Ý nghĩa |
+| --- | --- |
+| `status` | `PENDING`, `SUCCESS`, `FAILED` hoặc `REFUNDED`. Không truyền thì lấy tất cả |
+| `from`, `to` | Ngày **tạo** giao dịch, `yyyy-MM-dd`, tính cả hai ngày, giờ `Asia/Ho_Chi_Minh`. Có thể truyền một trong hai |
+| `bookingId` | Mọi lần thanh toán của một booking |
+| `orderCode` | Mã đơn PayOS, khi khách đọc mã trên trang PayOS hoặc sao kê |
+| `page`, `size` | `size` từ 1 đến 100, mặc định 20 |
+
+Lọc theo ngày tạo vì payment `PENDING` và `FAILED` không có ngày thanh toán. Ngày thanh toán nằm ở `paidAt`. Danh sách mới nhất trước.
+
+```json
+{
+  "data": [{
+    "id": 51, "bookingId": 120, "bookingCode": "BK261108100000ABCDEF", "userId": 7, "orderCode": 1762591234567,
+    "provider": "PAYOS", "amount": 386000.00, "status": "REFUNDED", "providerTransactionId": "FT25312...",
+    "paidAt": "2026-11-08T10:01:00", "createdAt": "2026-11-08T10:00:00",
+    "refunds": [
+      {"id": 9, "amount": 170000.00, "method": "VOUCHER", "voucherId": 88, "status": "COMPLETED",
+       "reason": "Showtime cancelled", "createdAt": "...", "refundedAt": "..."},
+      {"id": 10, "amount": 216000.00, "method": "VOUCHER", "voucherId": 89, "status": "COMPLETED", "...": "..."}
+    ]
+  }],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1, "first": true, "last": true
+}
+```
+
+- **Không xóa:** payment và refund không bao giờ bị xóa. Payment `REFUNDED` vẫn hiện ở đây, kèm từng dòng refund: `VOUCHER` là trả bằng voucher (`voucherId`), `MANUAL` là chuyển khoản tay.
+- **Đối soát:** `providerTransactionId` là mã giao dịch ngân hàng PayOS trả về khi tiền đã vào. `bookingCode` là mã in trên vé.
+- **Không trả link thanh toán:** `checkoutUrl` chỉ dành cho khách.
+
+Lỗi: khách gọi nhận 403. `from` sau `to`, `size` ngoài 1–100, `page` âm, `status` lạ hoặc ngày sai định dạng thì nhận 400.
+
 ## 3. State machine
 
 ```mermaid
@@ -262,6 +575,8 @@ stateDiagram-v2
         PENDING_PAYMENT --> CONFIRMED: confirm() – thanh toán thành công
         PENDING_PAYMENT --> CANCELLED: cancelBy(owner)
         PENDING_PAYMENT --> EXPIRED: expire() – quá expiredAt
+        PENDING_PAYMENT --> CANCELLED: cancelForShowtime() – rạp hủy suất
+        CONFIRMED --> SHOWTIME_CANCELLED: cancelForShowtime() – rạp hủy suất
     }
 ```
 
@@ -319,7 +634,7 @@ Nhánh hết hạn (job chạy mỗi `BOOKING_EXPIRY_SCAN_INTERVAL`, mặc đị
 3. Ngược lại `Booking.expire()` → ghế `RELEASED` → event `BookingExpired` → payment `FAILED`. Link hủy được thì mới hủy: PayOS tự đóng link đúng giờ hết hạn và từ chối hủy link đã đóng (code `221`).
 
 Nhánh thanh toán trễ: tiền về sau khi booking đã `EXPIRED`/`CANCELLED` → payment vẫn ghi `SUCCESS` (không mất dấu tiền), booking giữ nguyên,
-tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được đưa vào hoàn tiền.
+khách nhận voucher giá trị bằng số tiền đó và payment chuyển `REFUNDED`. Nếu 2 lần thanh toán cùng thành công cho 1 booking, lần sau cũng được trả lại bằng voucher.
 
 ## 5. Concurrency, idempotency và tính nhất quán
 
@@ -329,9 +644,12 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | Webhook, job hết hạn, người dùng hủy chạy cùng lúc | Load aggregate bằng `SELECT ... FOR UPDATE` + cột `version` (optimistic lock). |
 | PayOS gửi webhook nhiều lần | `markSucceeded()` idempotent; `order_code` unique. |
 | 1 transaction = 1 aggregate | Payment và Booking cập nhật ở 2 transaction, nối bằng domain event: use case publish qua port `DomainEvents`, listener ở `infrastructure` chạy policy sau commit. |
-| Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. |
+| Mất event giữa 2 transaction (crash) | Job định kỳ tìm payment `SUCCESS` có booking chưa `CONFIRMED` và chưa có refund → xử lý lại. Nếu đã phát voucher mà chưa ghi refund, lần chạy lại dùng đúng voucher đó. |
+| Phát voucher giá trị 2 lần | `UNIQUE (source_payment_id)` và `UNIQUE (source_booking_id)` trên `vouchers`. |
 | Webhook không tới | Job hết hạn + endpoint `sync` chủ động hỏi PayOS. |
 | Gọi service khác | Feign gọi **ngoài** transaction DB; timeout 2s/3s; lỗi → 503. |
+| Một mã áp vào 2 booking cùng lúc | Khóa dòng `vouchers` khi giữ mã. Người sau thấy mã đang `RESERVED` → 409. |
+| Voucher kẹt `RESERVED` | Event `BookingConfirmed`, `BookingExpired`, `BookingCancelled`, `BookingVoucherRemoved` cập nhật voucher. Job định kỳ kiểm tra lại voucher giữ lâu hơn `BOOKING_HOLD_TTL`. |
 
 ## 6. Cấu hình
 
@@ -344,6 +662,11 @@ tạo `refunds` `PENDING` để ADMIN xử lý. Nếu 2 lần thanh toán cùng 
 | `BOOKING_MAX_SEATS` | `8` | Số ghế tối đa / booking |
 | `BOOKING_EXPIRY_SCAN_INTERVAL` | `PT30S` | Chu kỳ job hết hạn + đối soát |
 | `BOOKING_EXPIRY_BATCH_SIZE` | `100` | Số booking xử lý mỗi lượt |
+| `BOOKING_VALUE_VOUCHER_TTL` | `P90D` | Voucher giá trị dùng được bao nhiêu ngày, tính cả ngày phát |
+| `BOOKING_CHECK_IN_OPENS_BEFORE` | `PT15M` | Mở check-in bao lâu trước giờ chiếu |
+| `BOOKING_CHECK_IN_CLOSES_AFTER` | `PT20M` | Còn check-in được bao lâu sau giờ chiếu |
+| `BOOKING_SHOWTIME_CANCEL_NOTICE` | `PT2H` | Hủy suất gần giờ chiếu hơn mốc này thì khách được tặng thêm voucher |
+| `booking.ticket-backfill-interval` | `PT5M` | Chu kỳ job điền thông tin vé cho booking cũ |
 | `SHOWTIME_SERVICE_URL`, `CINEMA_SERVICE_URL`, `MOVIE_SERVICE_URL` | rỗng (dùng Eureka) | Trỏ thẳng URL, ví dụ tới stub khi test |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | rỗng | Lấy ở my.payos.vn. Để trống thì service vẫn chạy, nhưng tạo link trả 502 và webhook trả 400 |
 | `PAYOS_RETURN_URL`, `PAYOS_CANCEL_URL` | `http://localhost:5173/payment/result` | Trang FE nhận redirect, xem mục dưới |
@@ -424,7 +747,7 @@ Booking gọi qua OpenFeign (`infrastructure/client`), chỉ khi xem sơ đồ g
 ## 8. Schema `booking_db` và điểm khác ERD
 
 Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transactions`, `refunds`, `combos`, `booking_combos`, `vouchers`, `user_vouchers`
-(voucher mới có schema, chưa có API). Các cột thêm so với ERD và lý do:
+và thêm bảng `booking_vouchers`. Các cột thêm so với ERD và lý do:
 
 | Bảng.cột | Lý do |
 | --- | --- |
@@ -437,7 +760,21 @@ Tạo đủ 8 bảng theo ERD: `bookings`, `booking_seats`, `payment_transaction
 | `bookings.movie_title`, `movie_poster_url`, `start_time`, `end_time`, `cinema_name`, `screen_name` | Bản sao thông tin vé lúc giữ ghế. `NULL` với booking cũ |
 | `booking_seats.row_code`, `seat_number`, `seat_type_name` | Bản sao thông tin ghế. `NULL` với booking cũ |
 | `booking_combos.combo_name` | Giữ tên combo lúc mua |
+| `vouchers.kind`, `seat_type_id`, `combo_id` | Loại voucher và điều kiện áp dụng |
+| `vouchers.version` | Optimistic locking (`@Version`) |
+| `user_vouchers.booking_id` | Booking đang giữ hoặc đã dùng voucher |
+| `bookings.showtime_cancelled_at`, `compensated_at` | Thời điểm rạp hủy suất, thời điểm bù xong cho khách |
+| `bookings.movie_id`, `cinema_id` | Mã phim và mã rạp trên vé, để thống kê không gom nhầm 2 phim trùng tên. Booking cũ được job điền lại |
+| `vouchers.source_reason` | Lý do hệ thống phát voucher cho booking. `UNIQUE (source_booking_id, source_reason)` để không phát trùng |
+| Bảng `booking_check_ins` | Mỗi lần quét: số người vào, nhân viên quét, thời điểm. Chỉ thêm, không sửa |
+| `vouchers.source_payment_id`, `source_booking_id` | Nguồn của voucher giá trị, `UNIQUE` để không phát trùng |
+| `refunds.method`, `voucher_id` | `MANUAL` là chuyển khoản tay, `VOUCHER` là trả bằng voucher. Refund cũ là `MANUAL` |
+| `booking_seats.seat_type_id` | Để voucher lọc theo loại ghế. `NULL` với booking cũ |
+| `bookings.discount_amount` | Tổng tiền voucher trừ. `total_amount` là số còn phải trả |
+| Bảng `booking_vouchers` | Voucher trên từng booking, kèm bản sao điều kiện và số tiền đang trừ. Bị xóa khi khách gỡ voucher, còn lại khi booking hủy hoặc hết hạn |
 
-`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin.
+`vouchers.usage_limit` theo ERD được giữ lại nhưng không dùng, vì mỗi mã chỉ dùng một lần. `uq_user_vouchers_voucher` đảm bảo mỗi mã có tối đa một chủ.
+
+`idx_bookings_booking_time` phục vụ lọc theo thời gian và sắp xếp mới nhất trước trong danh sách admin. `idx_bookings_status_start` phục vụ thống kê theo ngày chiếu. `idx_payment_transactions_created` phục vụ lịch sử giao dịch.
 
 `payment_transactions.provider_transaction_id` giữ đúng nghĩa ERD: mã giao dịch ngân hàng (`reference`) PayOS trả về khi thanh toán thành công.

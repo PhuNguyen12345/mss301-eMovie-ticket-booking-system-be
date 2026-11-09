@@ -1,12 +1,14 @@
 package fu.mss301.showtime;
 
 import fu.mss301.common.dto.ApiResponse;
+import fu.mss301.showtime.application.port.BookingNotifier;
 import fu.mss301.showtime.infrastructure.client.CinemaClient;
 import fu.mss301.showtime.infrastructure.client.MovieClient;
 import fu.mss301.showtime.application.dto.ShowtimeCommand;
 import fu.mss301.showtime.application.dto.SeatPriceCommand;
 import fu.mss301.showtime.domain.model.ShowtimeStatus;
 import fu.mss301.showtime.domain.exception.ShowtimeConflictException;
+import fu.mss301.showtime.application.exception.ShowtimeNotFoundException;
 import fu.mss301.showtime.application.exception.UpstreamServiceException;
 import fu.mss301.showtime.infrastructure.persistence.ShowtimeJpaRepository;
 import fu.mss301.showtime.infrastructure.persistence.SeatPriceJpaRepository;
@@ -52,6 +54,7 @@ class ShowtimeServiceApplicationTests {
     @Autowired private JdbcTemplate jdbc;
     @MockitoBean private MovieClient movieClient;
     @MockitoBean private CinemaClient cinemaClient;
+    @MockitoBean private BookingNotifier bookingNotifier;
 
     private final LocalDateTime start = LocalDate.now().plusDays(30).atTime(18, 0);
 
@@ -95,6 +98,36 @@ class ShowtimeServiceApplicationTests {
         assertEquals(ShowtimeStatus.CANCELLED, service.cancelShowtime(first.id()).status());
         assertThrows(ShowtimeConflictException.class, () -> service.updateShowtime(first.id(), request(1, start)));
         service.createShowtime(request(1, start));
+    }
+
+    @Test
+    void cancellingNotifiesBookingServiceAfterTheCommitAndAgainOnRepeat() {
+        var created = service.createShowtime(request(1, start));
+        doAnswer(call -> {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive(),
+                "Booking service must be notified after the commit");
+            assertEquals(ShowtimeStatus.CANCELLED, repository.findById(created.id()).orElseThrow().getStatus());
+            return null;
+        }).when(bookingNotifier).showtimeCancelled(created.id());
+
+        service.cancelShowtime(created.id());
+        service.cancelShowtime(created.id());
+
+        verify(bookingNotifier, times(2)).showtimeCancelled(created.id());
+    }
+
+    @Test
+    void failedCancellationDoesNotNotifyBookingService() {
+        var created = service.createShowtime(request(1, start));
+        var entity = repository.findById(created.id()).orElseThrow();
+        entity.setStartTime(start.minusYears(1));
+        entity.setEndTime(start.minusYears(1).plusHours(2));
+        repository.saveAndFlush(entity);
+
+        assertThrows(ShowtimeConflictException.class, () -> service.cancelShowtime(created.id()));
+        assertThrows(ShowtimeNotFoundException.class, () -> service.cancelShowtime(999_999_999L));
+
+        verifyNoInteractions(bookingNotifier);
     }
 
     @Test

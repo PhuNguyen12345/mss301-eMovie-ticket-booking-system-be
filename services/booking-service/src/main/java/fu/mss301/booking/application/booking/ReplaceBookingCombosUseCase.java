@@ -3,6 +3,7 @@ package fu.mss301.booking.application.booking;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboNotFoundException;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
+import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.ComboSelection;
@@ -25,14 +26,16 @@ public class ReplaceBookingCombosUseCase {
     private final PaymentRepository payments;
     private final ComboRepository combos;
     private final Transactions transactions;
+    private final DomainEvents events;
     private final Clock clock;
 
     public ReplaceBookingCombosUseCase(BookingRepository bookings, PaymentRepository payments, ComboRepository combos,
-                                       Transactions transactions, Clock clock) {
+                                       Transactions transactions, DomainEvents events, Clock clock) {
         this.bookings = bookings;
         this.payments = payments;
         this.combos = combos;
         this.transactions = transactions;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -47,7 +50,10 @@ public class ReplaceBookingCombosUseCase {
                 throw new InvalidStateTransitionException("Combos cannot be changed after a payment link was created");
             }
             booking.replaceCombos(select(lines), LocalDateTime.now(clock));
-            return BookingView.of(bookings.save(booking), null);
+            var saved = bookings.save(booking);
+            // Combo vouchers that no longer apply were taken off and are given back after commit.
+            events.publish(booking.pullEvents());
+            return BookingView.of(saved, null);
         });
     }
 

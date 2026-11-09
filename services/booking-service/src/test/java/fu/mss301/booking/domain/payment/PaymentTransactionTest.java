@@ -40,15 +40,57 @@ class PaymentTransactionTest {
     }
 
     @Test
-    void refundOnlyForSuccessfulPaymentAndOnlyOnce() {
+    void onlyASuccessfulPaymentIsGivenBackAsAVoucherAndOnlyOnce() {
         PaymentTransaction payment = pending();
-        assertThrows(InvalidStateTransitionException.class, () -> payment.requestRefund("late", NOW));
+        assertThrows(InvalidStateTransitionException.class, () -> payment.compensateWithVoucher(77, "late", NOW));
+        assertThrows(DomainException.class, () -> payment.compensateWithVoucher(null, "late", NOW));
         payment.markSucceeded(new BigDecimal("180000"), "FT1", NOW, NOW);
-        assertTrue(payment.requestRefund("late", NOW));
-        assertFalse(payment.requestRefund("late again", NOW));
+        assertTrue(payment.compensateWithVoucher(77, "late", NOW));
+        assertFalse(payment.compensateWithVoucher(78, "late again", NOW));
+        assertEquals(PaymentStatus.REFUNDED, payment.status());
         assertEquals(1, payment.refunds().size());
-        assertEquals(RefundStatus.PENDING, payment.refunds().getFirst().status());
-        assertEquals(new BigDecimal("180000.00"), payment.refunds().getFirst().amount());
+        var refund = payment.refunds().getFirst();
+        assertEquals(RefundMethod.VOUCHER, refund.method());
+        assertEquals(77, refund.voucherId());
+        assertEquals(RefundStatus.COMPLETED, refund.status());
+        assertEquals(NOW, refund.refundedAt());
+        assertEquals(new BigDecimal("180000.00"), refund.amount());
+    }
+
+    @Test
+    void aPaymentCanBeGivenBackOverSeveralVouchersThatAddUpToIt() {
+        PaymentTransaction payment = pending();
+        payment.markSucceeded(new BigDecimal("180000"), "FT1", NOW, NOW);
+        assertThrows(DomainException.class, () -> payment.compensateWithVouchers(
+            List.of(new VoucherShare(1, new BigDecimal("100000"))), "cancelled", NOW));
+        assertThrows(DomainException.class, () -> new VoucherShare(1, BigDecimal.ZERO));
+        assertTrue(payment.compensateWithVouchers(List.of(new VoucherShare(1, new BigDecimal("85000")),
+            new VoucherShare(2, new BigDecimal("95000"))), "cancelled", NOW));
+        assertEquals(PaymentStatus.REFUNDED, payment.status());
+        assertEquals(List.of(1, 2), payment.refunds().stream().map(Refund::voucherId).toList());
+        assertEquals(new BigDecimal("85000.00"), payment.refunds().getFirst().amount());
+        assertFalse(payment.compensateWithVouchers(List.of(new VoucherShare(3, new BigDecimal("180000"))), "again", NOW));
+    }
+
+    @Test
+    void aVoucherRefundIsAlreadyDoneSoItCannotBeCompletedByHand() {
+        var given = Refund.restore(4, new BigDecimal("180000.00"), "late", RefundMethod.VOUCHER, 77,
+            RefundStatus.COMPLETED, NOW, NOW, NOW);
+        PaymentTransaction payment = PaymentTransaction.restore(5, 9, PaymentMethod.BANK_TRANSFER, "PAYOS", 901L, null,
+            "FT1", null, new BigDecimal("180000.00"), PaymentStatus.REFUNDED, NOW, 0, NOW, NOW, List.of(given));
+        assertThrows(InvalidStateTransitionException.class, () -> payment.completeRefund(4, NOW));
+    }
+
+    @Test
+    void aManualRefundRecordedEarlierIsCompletedByHandAndNotReplacedByAVoucher() {
+        var open = Refund.restore(3, new BigDecimal("180000.00"), "late", RefundMethod.MANUAL, null,
+            RefundStatus.PENDING, null, NOW, NOW);
+        PaymentTransaction payment = PaymentTransaction.restore(5, 9, PaymentMethod.BANK_TRANSFER, "PAYOS", 901L, null,
+            "FT1", null, new BigDecimal("180000.00"), PaymentStatus.SUCCESS, NOW, 0, NOW, NOW, List.of(open));
+        assertFalse(payment.compensateWithVoucher(77, "late", NOW));
+        payment.completeRefund(3, NOW);
+        assertEquals(PaymentStatus.REFUNDED, payment.status());
+        assertEquals(RefundStatus.COMPLETED, payment.refunds().getFirst().status());
     }
 
     @Test

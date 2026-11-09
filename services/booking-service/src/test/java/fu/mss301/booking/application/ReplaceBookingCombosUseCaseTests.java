@@ -57,17 +57,17 @@ class ReplaceBookingCombosUseCaseTests {
         }
     };
     private final ReplaceBookingCombosUseCase useCase =
-        new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, CLOCK);
+        new ReplaceBookingCombosUseCase(bookings, payments, combos, transactions, events -> { }, CLOCK);
     private final List<ComboLine> oneCombo = List.of(new ComboLine(5, 2));
     private Booking booking;
 
     @BeforeEach
     void pendingBooking() {
-        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null)), 8, NOW,
+        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null, null)), 8, NOW,
             Duration.ofMinutes(5));
         booking = Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
-            held.totalAmount(), held.status(), held.expiredAt(), 0, held.createdAt(), held.updatedAt(), held.seats(),
-            held.combos());
+            held.totalAmount(), held.discountAmount(), held.status(), held.expiredAt(), 0, held.createdAt(), held.updatedAt(),
+            held.seats(), held.combos(), held.vouchers(), held.checkIns(), null, null);
         when(bookings.findByIdForUpdate(42)).thenReturn(Optional.of(booking));
         when(bookings.save(any())).thenAnswer(call -> call.getArgument(0));
         when(payments.findPendingByBookingIdForUpdate(42)).thenReturn(List.of());

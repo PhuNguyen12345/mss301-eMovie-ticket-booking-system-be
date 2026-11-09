@@ -54,7 +54,7 @@ class ArchitectureDependencyTests {
         try (var files = Files.walk(source.resolve("domain"))) {
             var repositories = files.map(path -> path.getFileName().toString())
                 .filter(name -> name.endsWith("Repository.java")).collect(Collectors.toSet());
-            assertEquals(Set.of("BookingRepository.java", "PaymentRepository.java", "ComboRepository.java"), repositories);
+            assertEquals(Set.of("BookingRepository.java", "PaymentRepository.java", "ComboRepository.java", "VoucherRepository.java"), repositories);
         }
     }
 

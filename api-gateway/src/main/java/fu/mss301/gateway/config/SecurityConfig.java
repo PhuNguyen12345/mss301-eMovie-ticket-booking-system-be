@@ -63,9 +63,21 @@ public class SecurityConfig {
                 .pathMatchers(HttpMethod.GET, "/api/bookings/showtimes/*/seats").permitAll()
                 // Listing every booking is for admins; customers still use POST here and everything under this path.
                 .pathMatchers(HttpMethod.GET, "/api/bookings").hasRole("ADMIN")
+                // Door staff scan tickets; until a staff role exists this is for admins.
+                .pathMatchers(HttpMethod.POST, "/api/bookings/check-in").hasRole("ADMIN")
+                // Re-runs the handling of a cancelled showtime when showtime-service could not reach booking-service.
+                .pathMatchers(HttpMethod.POST, "/api/bookings/showtimes/*/cancellation").hasRole("ADMIN")
+                // Revenue and tickets sold are for admins.
+                .pathMatchers(HttpMethod.GET, "/api/bookings/statistics").hasRole("ADMIN")
+                // The history of every payment is for admins; customers only sync their own booking below this path.
+                .pathMatchers(HttpMethod.GET, "/api/payments").hasRole("ADMIN")
                 .pathMatchers("/api/payments/refunds", "/api/payments/refunds/**").hasRole("ADMIN")
                 .pathMatchers(HttpMethod.GET, "/api/combos").permitAll()
                 .pathMatchers("/api/combos", "/api/combos/**").hasRole("ADMIN")
+                // Customers see their own vouchers and claim codes; everything else about vouchers is for admins.
+                .pathMatchers(HttpMethod.GET, "/api/vouchers/me").authenticated()
+                .pathMatchers(HttpMethod.POST, "/api/vouchers/claim").authenticated()
+                .pathMatchers("/api/vouchers", "/api/vouchers/**").hasRole("ADMIN")
                 .pathMatchers("/api/users/me", "/api/users/me/**", "/api/bookings/**", "/api/payments/**").authenticated()
                 .pathMatchers("/api/users/**").hasRole("ADMIN")
                 .anyExchange().denyAll())

@@ -31,23 +31,29 @@ public class BookingEntity {
     @Column(name = "booking_code", nullable = false, updatable = false, length = 50)
     private String bookingCode;
 
-    @Column(name = "movie_title", updatable = false)
+    @Column(name = "movie_title")
     private String movieTitle;
 
-    @Column(name = "movie_poster_url", updatable = false, length = 500)
+    @Column(name = "movie_poster_url", length = 500)
     private String moviePosterUrl;
 
-    @Column(name = "cinema_name", updatable = false)
+    @Column(name = "cinema_name")
     private String cinemaName;
 
-    @Column(name = "screen_name", updatable = false, length = 100)
+    @Column(name = "screen_name", length = 100)
     private String screenName;
 
-    @Column(name = "start_time", updatable = false)
+    @Column(name = "start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "end_time", updatable = false)
+    @Column(name = "end_time")
     private LocalDateTime endTime;
+
+    @Column(name = "movie_id")
+    private Integer movieId;
+
+    @Column(name = "cinema_id")
+    private Integer cinemaId;
 
     @Column(name = "booking_time", nullable = false, updatable = false)
     private LocalDateTime bookingTime;
@@ -55,12 +61,21 @@ public class BookingEntity {
     @Column(name = "total_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "discount_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private BookingStatus status;
 
     @Column(name = "expired_at", nullable = false, updatable = false)
     private LocalDateTime expiredAt;
+
+    @Column(name = "showtime_cancelled_at")
+    private LocalDateTime showtimeCancelledAt;
+
+    @Column(name = "compensated_at")
+    private LocalDateTime compensatedAt;
 
     @Version
     private Integer version;
@@ -79,4 +94,14 @@ public class BookingEntity {
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 100)
     private List<BookingComboEntity> combos = new ArrayList<>();
+
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    @BatchSize(size = 100)
+    private List<BookingVoucherEntity> vouchers = new ArrayList<>();
+
+    @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL)
+    @OrderBy("id ASC")
+    @BatchSize(size = 100)
+    private List<BookingCheckInEntity> checkIns = new ArrayList<>();
 }

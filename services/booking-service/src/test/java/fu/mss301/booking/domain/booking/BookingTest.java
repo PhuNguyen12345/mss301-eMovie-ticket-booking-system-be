@@ -93,10 +93,11 @@ class BookingTest {
 
     @Test
     void restoreLoadsAnOldBookingWithoutReapplyingBusinessRules() {
-        var seat = BookingSeat.restore(5, 3L, null, 1, new BigDecimal("90000.00"), null, null, null, SeatHoldStatus.RELEASED,
+        var seat = BookingSeat.restore(5, 3L, null, 1, new BigDecimal("90000.00"), null, null, null, null, SeatHoldStatus.RELEASED,
             NOW, NOW);
         Booking booking = Booking.restore(42, 7, 3L, new BookingCode("BK260101000000ABCDEF"), null, NOW,
-            new BigDecimal("90000.00"), BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat), List.of());
+            new BigDecimal("90000.00"), BigDecimal.ZERO, BookingStatus.EXPIRED, NOW.minusYears(1), 3, NOW, NOW, List.of(seat),
+            List.of(), List.of(), List.of(), null, null);
         assertEquals(BookingStatus.EXPIRED, booking.status());
         assertEquals(3, booking.version());
         assertEquals(5, booking.seats().getFirst().id());
@@ -129,8 +130,9 @@ class BookingTest {
         Booking booking = persisted(hold(seat(1, "90000")));
         var stored = BookingCombo.restore(77, 5, "Bắp nước", 2, new BigDecimal("85000.00"));
         Booking restored = Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(),
-            booking.ticket(), booking.bookingTime(), new BigDecimal("260000.00"), booking.status(), booking.expiredAt(), 0,
-            booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored));
+            booking.ticket(), booking.bookingTime(), new BigDecimal("260000.00"), BigDecimal.ZERO, booking.status(),
+            booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(), booking.seats(), List.of(stored), List.of(),
+            List.of(), null, null);
         restored.replaceCombos(List.of(combo(5, 3, "95000"), combo(6, 1, "40000")), NOW);
         assertEquals(77, restored.combos().getFirst().id());
         assertEquals(3, restored.combos().getFirst().quantity());
@@ -187,12 +189,13 @@ class BookingTest {
     }
 
     private static SeatSelection seat(int id, String price) {
-        return new SeatSelection(id, null, new BigDecimal(price), "A", id, "Ghế thường");
+        return new SeatSelection(id, null, new BigDecimal(price), "A", id, "Ghế thường", null);
     }
 
     private static Booking persisted(Booking booking) {
         return Booking.restore(42, booking.userId(), booking.showtimeId(), booking.bookingCode(), booking.ticket(), booking.bookingTime(),
-            booking.totalAmount(), booking.status(), booking.expiredAt(), 0, booking.createdAt(), booking.updatedAt(),
-            booking.seats(), booking.combos());
+            booking.totalAmount(), booking.discountAmount(), booking.status(), booking.expiredAt(), 0, booking.createdAt(),
+            booking.updatedAt(), booking.seats(), booking.combos(), booking.vouchers(), booking.checkIns(), booking.showtimeCancelledAt(),
+            booking.compensatedAt());
     }
 }

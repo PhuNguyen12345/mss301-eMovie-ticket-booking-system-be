@@ -80,7 +80,8 @@ public class HoldSeatsUseCase {
     private TicketDetails ticketFor(ShowtimeSnapshot showtime) {
         MovieInfo movie = movies.getMovie(showtime.movieId());
         return new TicketDetails(movie.title(), movie.posterUrl(), cinemas.cinemaName(showtime.cinemaId()),
-            cinemas.screenName(showtime.screenId()), showtime.startTime(), showtime.endTime());
+            cinemas.screenName(showtime.screenId()), showtime.startTime(), showtime.endTime(), showtime.movieId(),
+            showtime.cinemaId());
     }
 
     private static void requireUsable(Integer seatId, Map<Integer, PhysicalSeat> layout) {
@@ -94,7 +95,9 @@ public class HoldSeatsUseCase {
         SeatTypePrice typePrice = seat.seatTypeId() == null ? null : prices.get(seat.seatTypeId());
         String typeName = seat.seatTypeId() == null ? null : seatTypes.get(seat.seatTypeId());
         return typePrice == null
-            ? new SeatSelection(seat.id(), null, showtime.basePrice(), seat.rowCode(), seat.seatNumber(), typeName)
-            : new SeatSelection(seat.id(), typePrice.id(), typePrice.price(), seat.rowCode(), seat.seatNumber(), typeName);
+            ? new SeatSelection(seat.id(), null, showtime.basePrice(), seat.rowCode(), seat.seatNumber(), typeName,
+                seat.seatTypeId())
+            : new SeatSelection(seat.id(), typePrice.id(), typePrice.price(), seat.rowCode(), seat.seatNumber(), typeName,
+                seat.seatTypeId());
     }
 }

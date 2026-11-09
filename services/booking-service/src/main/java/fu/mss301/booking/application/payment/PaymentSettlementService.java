@@ -2,6 +2,7 @@ package fu.mss301.booking.application.payment;
 
 import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
+import fu.mss301.booking.application.voucher.ValueVoucherIssuer;
 import fu.mss301.booking.domain.booking.BookingRepository;
 import fu.mss301.booking.domain.booking.BookingStatus;
 import fu.mss301.booking.domain.payment.PaymentRepository;
@@ -22,14 +23,16 @@ public class PaymentSettlementService {
     private final BookingRepository bookings;
     private final Transactions transactions;
     private final DomainEvents events;
+    private final ValueVoucherIssuer valueVouchers;
     private final Clock clock;
 
     public PaymentSettlementService(PaymentRepository payments, BookingRepository bookings, Transactions transactions,
-                                    DomainEvents events, Clock clock) {
+                                    DomainEvents events, ValueVoucherIssuer valueVouchers, Clock clock) {
         this.payments = payments;
         this.bookings = bookings;
         this.transactions = transactions;
         this.events = events;
+        this.valueVouchers = valueVouchers;
         this.clock = clock;
     }
 
@@ -47,25 +50,37 @@ public class PaymentSettlementService {
 
     /**
      * Confirms the booking for a successful payment. If the booking can no longer be confirmed (expired,
-     * cancelled, or already paid by another attempt) the payment is flagged for refund instead.
+     * cancelled, or already paid by another attempt) the money is given back to the customer as a value voucher.
+     * Each step runs in its own transaction and can be repeated, so the reconciliation job finishes a run that
+     * stopped half way.
      */
     public void settle(Integer paymentId, Integer bookingId) {
-        boolean keep = transactions.write(() -> {
+        Integer owner = transactions.write(() -> {
             var booking = bookings.findByIdForUpdate(bookingId).orElseThrow(
                 () -> new IllegalStateException("Payment " + paymentId + " references missing booking " + bookingId));
             if (booking.status() == BookingStatus.PENDING_PAYMENT) {
                 booking.confirm(LocalDateTime.now(clock));
                 bookings.save(booking);
                 events.publish(booking.pullEvents());
-                return true;
+                return null;
             }
-            return booking.status() == BookingStatus.CONFIRMED && isFirstSuccessfulPayment(paymentId, bookingId);
+            boolean kept = booking.status() == BookingStatus.CONFIRMED && isFirstSuccessfulPayment(paymentId, bookingId);
+            return kept ? null : booking.userId();
         });
-        if (keep) return;
-        transactions.run(() -> payments.findByIdForUpdate(paymentId).ifPresent(payment -> {
-            if (payment.requestRefund("Booking " + bookingId + " could not be confirmed with this payment",
+        if (owner != null) giveBack(paymentId, bookingId, owner);
+    }
+
+    private void giveBack(Integer paymentId, Integer bookingId, Integer owner) {
+        var payment = transactions.read(() -> payments.findByBookingId(bookingId).stream()
+            .filter(p -> p.id().equals(paymentId)).findFirst()).orElse(null);
+        // A payment refunded earlier, by voucher or by hand, keeps that refund.
+        if (payment == null || !payment.refunds().isEmpty() || payment.status() != PaymentStatus.SUCCESS) return;
+        var voucher = valueVouchers.forPayment(paymentId, owner, payment.amount());
+        transactions.run(() -> payments.findByIdForUpdate(paymentId).ifPresent(locked -> {
+            if (locked.compensateWithVoucher(voucher.id(), "Booking " + bookingId
+                    + " could not be confirmed with this payment, given back as voucher " + voucher.code().value(),
                     LocalDateTime.now(clock))) {
-                payments.save(payment);
+                payments.save(locked);
             }
         }));
     }

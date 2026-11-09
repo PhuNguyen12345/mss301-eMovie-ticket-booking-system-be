@@ -14,5 +14,18 @@ public interface BookingRepository {
     /** Loads the aggregate with a row lock so concurrent confirm/expire/cancel are serialized. */
     Optional<Booking> findByIdForUpdate(Integer id);
 
+    Optional<Booking> findByCode(String bookingCode);
+
+    Optional<Booking> findByCodeForUpdate(String bookingCode);
+
     List<Integer> findOverdueIds(LocalDateTime now, int limit);
+
+    /** Bookings of a showtime that are waiting for payment or paid. */
+    List<Integer> findOpenIdsByShowtime(Long showtimeId);
+
+    /** Paid bookings whose showtime was cancelled and whose customer is not compensated yet, oldest first. */
+    List<Integer> findUncompensatedIds(int limit);
+
+    /** Bookings whose ticket lacks the movie and cinema ids, with an id above {@code afterId}, lowest first. */
+    List<Integer> findIdsMissingCatalogIds(Integer afterId, int limit);
 }

@@ -22,6 +22,36 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Integer>, Jp
     @Query("select b from BookingEntity b where b.id = :id")
     Optional<BookingEntity> lockById(@Param("id") Integer id);
 
+    Optional<BookingEntity> findByBookingCode(String bookingCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from BookingEntity b where b.bookingCode = :code")
+    Optional<BookingEntity> lockByBookingCode(@Param("code") String bookingCode);
+
+    @Query("select b.id from BookingEntity b where b.showtimeId = :showtimeId and b.status in :statuses order by b.id")
+    List<Integer> findIdsByShowtimeAndStatusIn(@Param("showtimeId") Long showtimeId,
+                                               @Param("statuses") Collection<BookingStatus> statuses);
+
+    @Query("""
+        select b.id from BookingEntity b where b.status = :status and b.compensatedAt is null
+        order by b.showtimeCancelledAt
+        """)
+    List<Integer> findIdsByStatusNotCompensated(@Param("status") BookingStatus status, Pageable limit);
+
+    @Query("""
+        select b.id from BookingEntity b where b.id > :afterId and (b.movieId is null or b.cinemaId is null)
+        order by b.id
+        """)
+    List<Integer> findIdsMissingCatalogIds(@Param("afterId") Integer afterId, Pageable limit);
+
+    /** What payment history shows of a booking, for many bookings in one query. */
+    @Query("""
+        select new fu.mss301.booking.infrastructure.persistence.BookingReference(
+            b.id, b.bookingCode, b.userId)
+        from BookingEntity b where b.id in :ids
+        """)
+    List<BookingReference> findReferences(@Param("ids") Collection<Integer> ids);
+
     Page<BookingEntity> findByUserId(Integer userId, Pageable pageable);
 
     @Query("select b.id from BookingEntity b where b.status = :status and b.expiredAt <= :now order by b.expiredAt")

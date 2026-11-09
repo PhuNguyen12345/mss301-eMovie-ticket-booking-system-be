@@ -42,6 +42,7 @@ services:
   showtime-service:
     environment:
       CINEMA_SERVICE_URL: http://contract-stub:8090
+      BOOKING_SERVICE_URL: http://contract-stub:8090
 
   api-gateway:
     environment:
@@ -54,6 +55,7 @@ services:
     command: [python, /tests/check.py]
     environment:
       GATEWAY_URL: http://api-gateway:8080
+      STUB_URL: http://contract-stub:8090
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
       JWT_ISSUER: ${JWT_ISSUER:-user-service}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-e-movie}

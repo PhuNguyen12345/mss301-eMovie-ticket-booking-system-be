@@ -9,13 +9,17 @@ API, schema và luồng nghiệp vụ xem ở [BOOKING_API.md](BOOKING_API.md).
 ```text
 fu.mss301.booking
   domain/
-    booking/         Booking, BookingSeat, BookingCombo, BookingCode, BookingRepository, event/
+    booking/         Booking, BookingSeat, BookingCombo, BookingVoucher, VoucherPricing, BookingCheckIn,
+                     CheckInWindow, BookingCode,
+                     BookingRepository, event/
     combo/           Combo, ComboRepository
+    voucher/         Voucher, VoucherClaim, VoucherTerms, VoucherCode, VoucherRepository
     payment/         PaymentTransaction, Refund, PaymentRepository, event/
     shared/          DomainEvent, DomainException, InvalidStateTransitionException
   application/
     booking/         Use case và view của booking
     combo/           Danh mục combo
+    voucher/         Quản lý, nhận voucher và VoucherReservations
     payment/         Use case và view của thanh toán, hoàn tiền
     policy/          Phản ứng với domain event
     port/            Transactions, DomainEvents, BookingQueries, ShowtimeCatalog,
@@ -26,6 +30,7 @@ fu.mss301.booking
     event/           SpringDomainEvents, DomainEventListener
     client/          Feign client và adapter
     payos/           Adapter PayOS SDK
+    qr/              Vẽ mã QR bằng ZXing
     config/          SpringTransactions, UseCaseConfig
     scheduling/      Job hết hạn và đối soát
   presentation/      Controller, request DTO, đọc user từ header, map lỗi sang HTTP
@@ -84,6 +89,69 @@ Repository adapter yêu cầu có transaction (`MANDATORY`) vì mapper phải đ
 - `active_flag` là generated column, không được map vào entity.
 - `save()` flush ngay, để lỗi `uq_booking_seats_active` được đổi thành `SeatAlreadyTakenException` rồi trả về 409.
 
+## Voucher
+
+`Voucher` là aggregate riêng, mỗi dòng là một mã. `VoucherClaim` là con của nó, tương ứng dòng `user_vouchers`, cho biết mã thuộc về ai. Mọi thay đổi đều khóa dòng `vouchers`, nên hai người nhận cùng một mã thì người sau đọc được mã đã có chủ. `uq_user_vouchers_voucher` là lớp chặn cuối ở DB.
+
+`VoucherTerms` gom các điều kiện của voucher và tự kiểm tra lúc tạo. `claim` trả cùng một lỗi cho mọi trường hợp không dùng được, để không ai dò được mã thật.
+
+### Áp voucher vào booking
+
+`Voucher` và `Booking` là 2 aggregate, nên `ApplyVoucherUseCase` đổi chúng ở 2 transaction:
+
+1. Khóa dòng voucher, `reserveFor(userId, bookingId)`, nhận lại `VoucherOffer` là bản sao điều kiện.
+2. Khóa dòng booking, `applyVoucher(offer, seatId)`. Booking lưu bản sao vào `BookingVoucher`, nên tính tiền không đọc lại `Voucher`.
+3. Bước 2 lỗi thì `VoucherReservations.settle` trả voucher, rồi ném lỗi gốc.
+
+Toàn bộ quy tắc tính tiền nằm ở `VoucherPricing`, dùng chung cho áp mã, gỡ mã, đổi combo và gỡ mã hết hạn. Chế độ `strict` từ chối cả lần áp nếu một voucher không còn hợp lệ. Chế độ còn lại bỏ voucher đó và `Booking` phát `BookingVoucherRemoved`.
+
+`VoucherReservations.settle(voucherId, bookingId)` đưa voucher về đúng trạng thái theo booking, chạy bao nhiêu lần cũng được:
+
+| Booking | Voucher |
+| --- | --- |
+| `CONFIRMED` và còn voucher | `USED` |
+| `PENDING_PAYMENT` và còn voucher | Giữ nguyên |
+| Trường hợp khác | `AVAILABLE` nếu đúng booking này đang giữ |
+
+`VoucherEventPolicy` gọi hàm này sau các event `BookingConfirmed`, `BookingExpired`, `BookingCancelled`, `BookingVoucherRemoved`. Job bảo trì gọi lại với voucher `RESERVED` lâu hơn `BOOKING_HOLD_TTL`, để event bị mất hoặc service dừng giữa 2 bước không làm kẹt voucher.
+
+Đơn 0đ được `InitiatePaymentUseCase` xác nhận trong transaction chỉ ghi booking, không tạo `PaymentTransaction`.
+
+### Voucher giá trị
+
+`ValueVoucherIssuer` phát voucher giá trị và chỉ phát một lần cho mỗi nguồn. Gọi lại với cùng payment hoặc booking thì trả voucher đã có. Hai lần chạy cùng lúc thì `UNIQUE` ở DB chặn lần sau, và lần đó đọc lại voucher của lần trước.
+
+Tiền về mà không xuất được vé, `PaymentSettlementService.settle` chạy 3 transaction:
+
+1. Khóa booking, xác định không giữ payment này.
+2. Phát voucher giá trị cho chủ booking.
+3. Khóa payment, `compensateWithVoucher(voucherId)`: thêm refund `VOUCHER` đã `COMPLETED`, payment `REFUNDED`.
+
+Dừng giữa bước 2 và 3 thì job đối soát chạy lại `settle` và dùng lại voucher đã phát.
+
+Phần dư được phát trong `VoucherReservations.settle` **trước** khi đánh dấu voucher cũ `USED`. Nếu phát lỗi, voucher cũ vẫn `RESERVED` và job bảo trì thử lại.
+
+## Check-in
+
+`BookingCheckIn` là con của `Booking`, mỗi dòng là một lần quét. `Booking.checkIn` giữ mọi quy tắc: chỉ `CONFIRMED`, trong `CheckInWindow`, tổng số người không vượt số ghế. Use case khóa dòng booking theo mã, nên hai máy quét cùng lúc lần lượt chạy.
+
+Giờ chiếu đọc từ bản sao vé. Booking cũ không có bản sao thì `CheckInUseCase` hỏi showtime-service trước khi mở transaction.
+
+Mã QR vẽ qua port `QrCodeRenderer`, nên `application` không phụ thuộc ZXing.
+
+## Suất chiếu bị hủy
+
+Showtime-service gọi `POST /internal/showtimes/{id}/cancellation` sau khi transaction hủy suất commit. `ShowtimeCancellationUseCase` hỏi lại showtime-service để chắc suất đã hủy, rồi gọi `Booking.cancelForShowtime` cho từng booking, mỗi booking một transaction. Booking chờ thanh toán phát `BookingCancelled`, nên các policy có sẵn đóng link PayOS và trả voucher. Booking đã thanh toán phát `BookingShowtimeCancelled`.
+
+`ShowtimeCompensationPolicy` gọi `ShowtimeCompensationService.compensate`. `ShowtimeCompensation` trong domain tính số tiền, service chạy 4 bước, mỗi bước một transaction:
+
+1. Trả voucher đã dùng.
+2. Phát voucher, mỗi `VoucherSourceReason` một cái.
+3. Ghi refund cho payment.
+4. `markCompensated`.
+
+Bước nào cũng lặp lại được, nên job bảo trì chạy lại booking chưa có `compensated_at`. `VoucherReservations.settle` bỏ qua voucher của booking `SHOWTIME_CANCELLED`, để chỉ bước 1 quyết định voucher đó.
+
 ## Combo
 
 `Combo` là aggregate riêng, `Booking` chỉ giữ `comboId` và bản sao đơn giá. `PUT /api/bookings/{id}/combos` chỉ ghi vào `Booking`, còn `Combo` chỉ được đọc, nên vẫn giữ quy tắc 1 transaction ghi 1 aggregate.
@@ -96,8 +164,17 @@ Vé đã bán là bản sao cố định. `HoldSeatsUseCase` đọc phim, rạp,
 
 - Đường đọc không gọi upstream. Không thêm lời gọi Feign vào `BookingQueryService`, vì `GET /api/bookings/me` và việc xem vé khi service khác lỗi đều dựa vào điều này.
 - Kiểm tra ghế trước khi đọc thông tin vé, để request không hợp lệ không tốn thêm lời gọi.
-- `Booking.ticket()` có thể `null` với booking cũ, còn booking mới luôn có.
+- `Booking.ticket()` có thể `null` với booking cũ, còn booking mới luôn có. Vé lưu cả mã phim và mã rạp để thống kê.
+- `TicketBackfillService` điền vé cho booking cũ, chạy trong job bảo trì. Nó đọc showtime, phim, rạp ngoài transaction, cache theo suất trong một lượt, rồi gọi `Booking.completeTicket` cho từng booking trong transaction riêng. `completeTicket` chỉ thêm mã vào vé đã có, không sửa tên hay giờ chiếu in trên vé. Booking lỗi được bỏ qua, lượt sau thử lại.
 - Khi suất chiếu đổi giờ, vé không tự cập nhật. Khách xử lý theo nghiệp vụ ở issue #20.
+
+## Thống kê
+
+`StatisticsQuery` đọc qua port `BookingStatistics`, adapter `JdbcBookingStatistics` chạy một câu SQL tổng hợp, không load aggregate. Câu trong tính từng booking bằng subquery riêng cho ghế, combo và payment, nên booking nhiều ghế, nhiều combo không bị nhân tiền như khi join. Câu ngoài nhóm theo ngày, tháng, phim hoặc rạp. Dòng tổng được cộng trong Java.
+
+## Lịch sử giao dịch
+
+`PaymentHistoryQuery` kiểm tra tham số rồi đọc qua port `PaymentQueries`, giống `BookingQueries`. Adapter `JpaPaymentQueries` lọc `PaymentEntity` bằng `Specification`, sắp `created_at DESC, id DESC`, rồi lấy mã booking và user của cả trang bằng một query. Không có gì ở đây sửa payment.
 
 ## Logging
 

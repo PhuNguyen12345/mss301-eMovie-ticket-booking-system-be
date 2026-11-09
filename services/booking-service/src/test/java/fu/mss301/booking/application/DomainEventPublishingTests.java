@@ -80,7 +80,7 @@ class DomainEventPublishingTests {
     @Test
     void settlementPublishesBookingConfirmed() {
         when(bookings.findByIdForUpdate(42)).thenReturn(Optional.of(pending(NOW.plusMinutes(5))));
-        new PaymentSettlementService(payments, bookings, transactions, events, CLOCK).settle(5, 42);
+        new PaymentSettlementService(payments, bookings, transactions, events, null, CLOCK).settle(5, 42);
         assertEquals(List.of(new BookingConfirmed(42)), published);
     }
 
@@ -88,7 +88,7 @@ class DomainEventPublishingTests {
     void recordingSuccessPublishesPaymentSucceededOnlyTheFirstTime() {
         var payment = pendingPayment();
         when(payments.findByOrderCodeForUpdate(4201L)).thenReturn(Optional.of(payment));
-        var settlement = new PaymentSettlementService(payments, bookings, transactions, events, CLOCK);
+        var settlement = new PaymentSettlementService(payments, bookings, transactions, events, null, CLOCK);
         settlement.recordSuccess(4201L, 90000L, "FT1", NOW);
         settlement.recordSuccess(4201L, 90000L, "FT1", NOW);
         assertEquals(List.of(new PaymentSucceeded(5, 42)), published);
@@ -96,10 +96,11 @@ class DomainEventPublishingTests {
     }
 
     private static Booking pending(LocalDateTime expiredAt) {
-        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null)), 8,
+        var held = Booking.hold(7, 3L, TICKET, List.of(new SeatSelection(1, null, new BigDecimal("90000"), "A", 1, null, null)), 8,
             NOW.minusMinutes(10), Duration.ofMinutes(5));
         return Booking.restore(42, held.userId(), held.showtimeId(), held.bookingCode(), held.ticket(), held.bookingTime(),
-            held.totalAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(), held.combos());
+            held.totalAmount(), held.discountAmount(), held.status(), expiredAt, 0, held.createdAt(), held.updatedAt(), held.seats(),
+            held.combos(), held.vouchers(), held.checkIns(), null, null);
     }
 
     private static PaymentTransaction pendingPayment() {
