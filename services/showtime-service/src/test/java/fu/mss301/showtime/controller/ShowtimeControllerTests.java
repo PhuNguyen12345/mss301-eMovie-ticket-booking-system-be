@@ -1,12 +1,12 @@
 package fu.mss301.showtime.controller;
 
-import fu.mss301.showtime.presentation.controller.*;
+import fu.mss301.showtime.infrastructure.web.controller.*;
 
 import fu.mss301.showtime.application.dto.ShowtimePage;
 import fu.mss301.showtime.application.dto.ShowtimeView;
 import fu.mss301.showtime.domain.model.ShowtimeStatus;
 import fu.mss301.showtime.domain.exception.ShowtimeConflictException;
-import fu.mss301.showtime.presentation.exception.ShowtimeExceptionHandler;
+import fu.mss301.showtime.infrastructure.web.exception.ShowtimeExceptionHandler;
 import fu.mss301.showtime.application.exception.ShowtimeNotFoundException;
 import fu.mss301.showtime.application.exception.UpstreamServiceException;
 import fu.mss301.showtime.application.usecase.ShowtimeService;

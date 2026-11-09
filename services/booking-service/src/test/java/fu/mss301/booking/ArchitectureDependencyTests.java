@@ -29,14 +29,24 @@ class ArchitectureDependencyTests {
     void innerLayersDoNotUseFullyQualifiedFrameworkNames() throws Exception {
         for (var layer : List.of("domain", "application")) {
             assertNoReferences(layer, "org.springframework", "jakarta.", "lombok.", "org.slf4j", "fu.mss301.common",
-                "fu.mss301.booking.infrastructure.", "fu.mss301.booking.presentation.");
+                "fu.mss301.booking.infrastructure.", "fu.mss301.booking.infrastructure.web.");
         }
     }
 
     @Test
-    void presentationCannotBypassUseCasesAndInfrastructureDoesNotImportPresentation() throws Exception {
-        assertNoReferences("presentation", "fu.mss301.booking.infrastructure.", "BookingRepository", "PaymentRepository");
-        assertNoReferences("infrastructure", "fu.mss301.booking.presentation.");
+    void webCannotBypassUseCasesAndOtherAdaptersDoNotImportWeb() throws Exception {
+        Path web = source.resolve("infrastructure/web");
+        assertTrue(Files.isDirectory(web));
+        try (var files = Files.walk(source.resolve("infrastructure"))) {
+            for (var file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String text = Files.readString(file);
+                if (file.startsWith(web)) {
+                    assertFalse(Pattern.compile("fu\\.mss301\\.booking\\.infrastructure\\.(?!web\\.)").matcher(text).find(), file.toString());
+                    assertFalse(text.contains("booking.domain.repository."), file.toString());
+                    assertFalse(text.contains("BookingRepository") || text.contains("PaymentRepository"), file.toString());
+                } else assertFalse(text.contains("fu.mss301.booking.infrastructure.web."), file.toString());
+            }
+        }
     }
 
     @Test

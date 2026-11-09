@@ -24,12 +24,12 @@ final class JpaDomainMapper {
                 .address(entity.getAddress()).preferredCinemaId(entity.getPreferredCinemaId())
                 .avatarUrl(entity.getAvatarUrl()).status(entity.getStatus())
                 .emailVerifiedAt(entity.getEmailVerifiedAt()).createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt()).build();
+                .updatedAt(entity.getUpdatedAt());
         if (includeRoles) {
-            snapshot.setRoles(entity.getRoles().stream().map(JpaDomainMapper::role)
+            snapshot.roles(entity.getRoles().stream().map(JpaDomainMapper::role)
                     .collect(Collectors.toUnmodifiableSet()));
         }
-        return snapshot;
+        return snapshot.build();
     }
 
     static UserRole role(Role entity) {

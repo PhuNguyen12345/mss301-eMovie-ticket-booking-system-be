@@ -48,17 +48,9 @@ public class RefreshTokenUseCase implements RefreshTokenService {
         }
         RefreshCredential previous = tokens.findByTokenHash(hash(rawToken)).orElseThrow(this::invalidToken);
         var now = clock.instant();
-        if (Boolean.TRUE.equals(previous.getRevoked())
-                || !previous.getExpiresAt().isAfter(LocalDateTime.ofInstant(now, ZoneOffset.UTC))) {
-            throw invalidToken();
-        }
+        if (!previous.canRotate(LocalDateTime.ofInstant(now, ZoneOffset.UTC))) throw invalidToken();
         User user = previous.getUser();
-        if (!user.isActiveAndVerified()) {
-            throw invalidToken();
-        }
-        previous.setRevoked(true);
-        previous.setRevokedAt(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
-        previous.setUpdatedAt(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
+        previous.consume(LocalDateTime.ofInstant(now, ZoneOffset.UTC));
         tokens.update(previous);
 
         var responseUser = new LoginUserResponse(user.getId(), user.getFullName(), user.getEmail(),

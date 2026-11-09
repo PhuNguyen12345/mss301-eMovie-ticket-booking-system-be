@@ -1,6 +1,6 @@
 # Booking-service: Clean Architecture
 
-Booking-service theo cùng chuẩn với showtime-service: `domain` và `application` chỉ dùng Java, mọi chi tiết kỹ thuật nằm ở `infrastructure` và `presentation`. Tài liệu gốc của chuẩn này là [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md). File này chỉ ghi những gì booking cần thêm hoặc làm khác.
+Booking-service theo cùng chuẩn với showtime-service: `domain` và `application` chỉ dùng Java, mọi chi tiết kỹ thuật nằm ở `infrastructure` (bao gồm `infrastructure/web`). Tài liệu gốc của chuẩn này là [SHOWTIME_ARCHITECTURE.md](SHOWTIME_ARCHITECTURE.md). File này chỉ ghi những gì booking cần thêm hoặc làm khác.
 
 API, schema và luồng nghiệp vụ xem ở [BOOKING_API.md](BOOKING_API.md).
 
@@ -33,7 +33,7 @@ fu.mss301.booking
     qr/              Vẽ mã QR bằng ZXing
     config/          SpringTransactions, UseCaseConfig
     scheduling/      Job hết hạn và đối soát
-  presentation/      Controller, request DTO, đọc user từ header, map lỗi sang HTTP
+    web/             Controller, request DTO, đọc user từ header, map lỗi sang HTTP
 ```
 
 `ArchitectureDependencyTests` kiểm tra các quy tắc phụ thuộc này mỗi lần chạy test.

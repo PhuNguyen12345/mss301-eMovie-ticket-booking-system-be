@@ -94,7 +94,7 @@ class PasswordChangeServiceImplTest {
     void laterRequestInvalidatesPreviousOtp() {
         when(users.findByIdForUpdate(7)).thenReturn(Optional.of(user));
         PasswordOtp previous = otp("012345");
-        previous.setCreatedAt(LOCAL_NOW.minusSeconds(61));
+        previous = previous.toBuilder().createdAt(LOCAL_NOW.minusSeconds(61)).build();
         when(otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(7, PasswordOtpPurpose.PASSWORD_CHANGE)).thenReturn(Optional.of(previous));
         when(generator.generate()).thenReturn("654321");
         when(otps.createAndFlush(any())).thenAnswer(invocation -> {
@@ -133,7 +133,7 @@ class PasswordChangeServiceImplTest {
     void fifthIncorrectOtpIsSavedAndBlocksFurtherAttempts() {
         when(users.findByIdForUpdate(7)).thenReturn(Optional.of(user));
         PasswordOtp entry = otp("012345");
-        entry.setFailedAttempts(4);
+        entry = entry.toBuilder().failedAttempts(4).build();
         when(otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(7, PasswordOtpPurpose.PASSWORD_CHANGE)).thenReturn(Optional.of(entry));
 
         assertEquals(StatusCode.TOO_MANY_REQUESTS, statusFor("999999"));
@@ -150,11 +150,12 @@ class PasswordChangeServiceImplTest {
     void expiredAndUsedOtpCannotChangePassword() {
         when(users.findByIdForUpdate(7)).thenReturn(Optional.of(user));
         PasswordOtp entry = otp("012345");
+        entry = entry.toBuilder().expiresAt(LOCAL_NOW).build();
         when(otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(7, PasswordOtpPurpose.PASSWORD_CHANGE)).thenReturn(Optional.of(entry));
-        entry.setExpiresAt(LOCAL_NOW);
         assertEquals(StatusCode.GONE,
                 statusFor("012345"));
-        entry.setUsedAt(LOCAL_NOW.minusMinutes(1));
+        entry = entry.toBuilder().usedAt(LOCAL_NOW.minusMinutes(1)).build();
+        when(otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(7, PasswordOtpPurpose.PASSWORD_CHANGE)).thenReturn(Optional.of(entry));
         assertEquals(StatusCode.CONFLICT,
                 statusFor("012345"));
         verifyNoInteractions(refreshTokens);

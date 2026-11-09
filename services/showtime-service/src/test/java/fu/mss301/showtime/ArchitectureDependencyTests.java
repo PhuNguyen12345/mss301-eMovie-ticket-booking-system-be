@@ -18,9 +18,19 @@ class ArchitectureDependencyTests {
     }
 
     @Test
-    void presentationCannotBypassUseCasesAndInfrastructureDoesNotImportPresentation() throws Exception {
-        assertNoReferences("presentation", "fu.mss301.showtime.infrastructure.", "fu.mss301.showtime.domain.repository.");
-        assertNoReferences("infrastructure", "fu.mss301.showtime.presentation.");
+    void webCannotBypassUseCasesAndOtherAdaptersDoNotImportWeb() throws Exception {
+        Path web = source.resolve("infrastructure/web");
+        assertTrue(Files.isDirectory(web));
+        try (var files = Files.walk(source.resolve("infrastructure"))) {
+            for (var file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String text = Files.readString(file);
+                if (file.startsWith(web)) {
+                    assertFalse(Pattern.compile("fu\\.mss301\\.showtime\\.infrastructure\\.(?!web\\.)").matcher(text).find(), file.toString());
+                    assertFalse(text.contains("showtime.domain.repository."), file.toString());
+                    assertFalse(text.contains("BookingRepository") || text.contains("PaymentRepository"), file.toString());
+                } else assertFalse(text.contains("fu.mss301.showtime.infrastructure.web."), file.toString());
+            }
+        }
     }
 
     @Test

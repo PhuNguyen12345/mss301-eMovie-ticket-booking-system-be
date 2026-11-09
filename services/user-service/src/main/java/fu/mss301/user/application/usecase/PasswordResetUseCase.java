@@ -1,5 +1,6 @@
 package fu.mss301.user.application.usecase;
 
+import fu.mss301.user.domain.valueobject.PasswordPolicy;
 import fu.mss301.user.application.port.in.*;
 
 import fu.mss301.user.application.usecase.dto.ForgotPasswordRequest;
@@ -16,7 +17,6 @@ import fu.mss301.user.domain.event.PasswordResetOtpRequested;
 import fu.mss301.user.domain.repository.PasswordOtpStore;
 import fu.mss301.user.domain.repository.RefreshTokenStore;
 import fu.mss301.user.domain.repository.UserStore;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -76,11 +76,11 @@ public class PasswordResetUseCase implements PasswordResetService {
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         PasswordOtp previous = otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(
                 userId, PasswordOtpPurpose.PASSWORD_RESET).orElse(null);
-        if (previous != null && previous.getCreatedAt().plus(cooldown).isAfter(now)) {
+        if (previous != null && previous.retryAfter(now, cooldown) > 0) {
             return;
         }
         if (previous != null && previous.getUsedAt() == null) {
-            previous.setUsedAt(now);
+            previous.invalidate(now);
             otps.saveAndFlush(previous);
         }
 
@@ -92,7 +92,7 @@ public class PasswordResetUseCase implements PasswordResetService {
                     entry.getOtpHash(), entry.getExpiresAt().toInstant(ZoneOffset.UTC)));
         } catch (RuntimeException exception) {
             // Keep the public response independent of whether the email exists.
-            entry.setOtpDeliveryStatus(OtpDeliveryStatus.FAILED);
+            entry.deliveryFailed();
             otps.saveAndFlush(entry);
         }
     }
@@ -124,33 +124,31 @@ public class PasswordResetUseCase implements PasswordResetService {
         PasswordOtp entry = otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(
                 userId, PasswordOtpPurpose.PASSWORD_RESET).orElse(null);
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (entry == null || entry.getUsedAt() != null || !entry.getExpiresAt().isAfter(now)) {
+        if (entry == null || entry.verificationState(now, maxAttempts) == fu.mss301.user.domain.model.OtpState.USED || entry.verificationState(now, maxAttempts) == fu.mss301.user.domain.model.OtpState.EXPIRED) {
             return invalidOtp();
         }
-        if (entry.getFailedAttempts() >= maxAttempts) {
+        if (entry.verificationState(now, maxAttempts) == fu.mss301.user.domain.model.OtpState.ATTEMPTS_EXHAUSTED) {
             return ResetResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts");
         }
         if (!encoder.matches(request.otp(), entry.getOtpHash())) {
-            int attempts = entry.getFailedAttempts() + 1;
-            entry.setFailedAttempts(attempts);
+            int attempts = entry.recordInvalidAttempt(now, maxAttempts);
             otps.saveAndFlush(entry);
             return attempts >= maxAttempts
                     ? ResetResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts")
                     : invalidOtp();
         }
-        if (request.newPassword().getBytes(StandardCharsets.UTF_8).length > 72) {
+        if (PasswordPolicy.tooLong(request.newPassword())) {
             return ResetResult.failure(StatusCode.BAD_REQUEST, "Password must not exceed 72 UTF-8 bytes");
         }
         if (encoder.matches(request.newPassword(), user.getPasswordHash())) {
             return ResetResult.failure(StatusCode.BAD_REQUEST, "New password must differ from current password");
         }
-        user.setPasswordHash(encoder.encode(request.newPassword()));
-        user.setUpdatedAt(now);
-        entry.setUsedAt(now);
+        user.changePassword(encoder.encode(request.newPassword()), now);
+        entry.consume(now, maxAttempts);
         otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(userId, PasswordOtpPurpose.PASSWORD_CHANGE)
                 .filter(changeOtp -> changeOtp.getUsedAt() == null)
                 .ifPresent(changeOtp -> {
-                    changeOtp.setUsedAt(now);
+                    changeOtp.invalidate(now);
                     otps.saveAndFlush(changeOtp);
                 });
         users.saveAndFlush(user);

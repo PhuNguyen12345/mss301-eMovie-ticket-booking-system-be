@@ -1,5 +1,6 @@
 package fu.mss301.user.application.usecase;
 
+import fu.mss301.user.domain.valueobject.PasswordPolicy;
 import fu.mss301.user.application.port.in.*;
 
 import fu.mss301.user.application.port.in.PasswordChangeService;
@@ -16,7 +17,6 @@ import fu.mss301.user.domain.event.PasswordChangeOtpRequested;
 import fu.mss301.user.domain.repository.PasswordOtpStore;
 import fu.mss301.user.domain.repository.RefreshTokenStore;
 import fu.mss301.user.domain.repository.UserStore;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -67,21 +67,20 @@ public class PasswordChangeUseCase implements PasswordChangeService {
     private PasswordChangeOtpResponse requestOtpForUser(Integer userId, String currentPassword) {
         User user = activeUserForUpdate(userId);
         if (currentPassword == null || currentPassword.isBlank()
-                || currentPassword.getBytes(StandardCharsets.UTF_8).length > 72
+                || PasswordPolicy.tooLong(currentPassword)
                 || !encoder.matches(currentPassword, user.getPasswordHash())) {
             throw new UseCaseException(StatusCode.UNAUTHORIZED, "Invalid current password");
         }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         PasswordOtp previous = otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(
                 userId, PasswordOtpPurpose.PASSWORD_CHANGE).orElse(null);
-        if (previous != null && previous.getCreatedAt().plus(cooldown).isAfter(now)) {
-            Duration remaining = Duration.between(now, previous.getCreatedAt().plus(cooldown));
-            long retryAfter = Math.max(1, remaining.getSeconds() + (remaining.getNano() > 0 ? 1 : 0));
+        if (previous != null && previous.retryAfter(now, cooldown) > 0) {
+            long retryAfter = previous.retryAfter(now, cooldown);
             throw new UseCaseException(StatusCode.TOO_MANY_REQUESTS,
                     "Please wait before requesting another OTP", retryAfter);
         }
         if (previous != null && previous.getUsedAt() == null) {
-            previous.setUsedAt(now);
+            previous.invalidate(now);
             otps.saveAndFlush(previous);
         }
 
@@ -120,37 +119,32 @@ public class PasswordChangeUseCase implements PasswordChangeService {
         if (entry == null) {
             return ConfirmationResult.failure(StatusCode.NOT_FOUND, "Password change OTP not requested");
         }
-        if (entry.getUsedAt() != null) {
-            return ConfirmationResult.failure(StatusCode.CONFLICT, "Password change OTP already used");
-        }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (!entry.getExpiresAt().isAfter(now)) {
-            return ConfirmationResult.failure(StatusCode.GONE, "OTP has expired");
-        }
-        if (entry.getFailedAttempts() >= maxAttempts) {
-            return ConfirmationResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts");
+        switch (entry.verificationState(now, maxAttempts)) {
+            case USED -> { return ConfirmationResult.failure(StatusCode.CONFLICT, "Password change OTP already used"); }
+            case EXPIRED -> { return ConfirmationResult.failure(StatusCode.GONE, "OTP has expired"); }
+            case ATTEMPTS_EXHAUSTED -> { return ConfirmationResult.failure(StatusCode.TOO_MANY_REQUESTS, "Too many invalid OTP attempts"); }
+            default -> { }
         }
         if (!encoder.matches(request.otp(), entry.getOtpHash())) {
-            int attempts = entry.getFailedAttempts() + 1;
-            entry.setFailedAttempts(attempts);
+            int attempts = entry.recordInvalidAttempt(now, maxAttempts);
             otps.saveAndFlush(entry);
             return ConfirmationResult.failure(attempts >= maxAttempts
                             ? StatusCode.TOO_MANY_REQUESTS : StatusCode.BAD_REQUEST,
                     attempts >= maxAttempts ? "Too many invalid OTP attempts" : "Invalid OTP");
         }
-        if (request.newPassword().getBytes(StandardCharsets.UTF_8).length > 72) {
+        if (PasswordPolicy.tooLong(request.newPassword())) {
             return ConfirmationResult.failure(StatusCode.BAD_REQUEST, "Password must not exceed 72 UTF-8 bytes");
         }
         if (encoder.matches(request.newPassword(), user.getPasswordHash())) {
             return ConfirmationResult.failure(StatusCode.BAD_REQUEST, "New password must differ from current password");
         }
-        user.setPasswordHash(encoder.encode(request.newPassword()));
-        user.setUpdatedAt(now);
-        entry.setUsedAt(now);
+        user.changePassword(encoder.encode(request.newPassword()), now);
+        entry.consume(now, maxAttempts);
         otps.findTopByUser_IdAndPurposeOrderByCreatedAtDescIdDesc(userId, PasswordOtpPurpose.PASSWORD_RESET)
                 .filter(resetOtp -> resetOtp.getUsedAt() == null)
                 .ifPresent(resetOtp -> {
-                    resetOtp.setUsedAt(now);
+                    resetOtp.invalidate(now);
                     otps.saveAndFlush(resetOtp);
                 });
         users.saveAndFlush(user);

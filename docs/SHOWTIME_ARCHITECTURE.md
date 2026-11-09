@@ -24,12 +24,12 @@ fu.mss301.showtime
     client/         Feign clients, validated catalog adapters and the
                     booking notifier
     config/         Spring transaction adapter, Clock and use-case wiring
-  presentation/
-    controller/     HTTP binding and shared ApiResponse envelope
-    exception/      Exception-to-HTTP mapping
+    web/
+      controller/     HTTP binding and shared ApiResponse envelope
+      exception/      Exception-to-HTTP mapping
 ```
 
-Dependencies point inward: presentation calls application; application depends
+Dependencies point inward: infrastructure/web calls application; application depends
 on domain and ports; infrastructure implements those ports. Domain and
 application import only Java and their permitted inner packages. Architecture
 tests guard these rules, aggregate construction, and the absence of setters.

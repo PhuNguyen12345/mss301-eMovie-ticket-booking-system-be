@@ -1,5 +1,6 @@
 package fu.mss301.user.application.usecase;
 
+import fu.mss301.user.domain.valueobject.PasswordPolicy;
 import fu.mss301.user.application.port.in.*;
 
 import fu.mss301.user.application.usecase.*;
@@ -13,7 +14,6 @@ import fu.mss301.user.application.port.out.OtpCodeGenerator;
 import fu.mss301.user.domain.event.RegistrationOtpRequested;
 import fu.mss301.user.domain.repository.RegistrationStore;
 import fu.mss301.user.domain.repository.UserStore;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -55,7 +55,7 @@ public class RegistrationUseCase implements RegistrationService {
     }
 
     public RegistrationOtpResponse register(RegisterRequest request) {
-        if (request.password().getBytes(StandardCharsets.UTF_8).length > 72) {
+        if (PasswordPolicy.tooLong(request.password())) {
             throw new UseCaseException(StatusCode.BAD_REQUEST, "Password must not exceed 72 UTF-8 bytes");
         }
         String email = Email.of(request.email()).value();
@@ -68,7 +68,7 @@ public class RegistrationUseCase implements RegistrationService {
         }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         pendingRepository.findByEmail(email).ifPresent(existing -> {
-            if (existing.getConfirmedAt() != null || existing.getExpiresAt().isAfter(now)) {
+            if (existing.blocksNewRegistration(now)) {
                 throw new UseCaseException(StatusCode.CONFLICT, "Registration already exists");
             }
             pendingRepository.delete(existing);
@@ -94,31 +94,20 @@ public class RegistrationUseCase implements RegistrationService {
     public RegistrationOtpResponse resendOtp(ResendRegistrationOtpRequest request) {
         Registration pending = pendingRepository.findByIdForUpdate(request.registrationId().toString())
                 .orElseThrow(() -> new UseCaseException(StatusCode.NOT_FOUND, "Registration not found"));
-        if (pending.getConfirmedAt() != null) {
-            throw new UseCaseException(StatusCode.CONFLICT, "Registration already confirmed");
-        }
         LocalDateTime now = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
-        if (pending.getResendCount() >= maxResends) {
-            throw new UseCaseException(StatusCode.TOO_MANY_REQUESTS, "OTP resend limit reached");
-        }
-        if (pending.getNextOtpSendAt().isAfter(now)) {
-            Duration remaining = Duration.between(now, pending.getNextOtpSendAt());
-            long retryAfterSeconds = Math.max(1, remaining.getSeconds() + (remaining.getNano() > 0 ? 1 : 0));
-            throw new UseCaseException(StatusCode.TOO_MANY_REQUESTS,
-                    "Please wait before requesting another OTP", retryAfterSeconds);
+        switch (pending.resendState(now, maxResends)) {
+            case USED -> throw new UseCaseException(StatusCode.CONFLICT, "Registration already confirmed");
+            case RESEND_LIMIT_REACHED -> throw new UseCaseException(StatusCode.TOO_MANY_REQUESTS, "OTP resend limit reached");
+            case COOLDOWN -> throw new UseCaseException(StatusCode.TOO_MANY_REQUESTS,
+                    "Please wait before requesting another OTP", pending.retryAfter(now));
+            default -> { }
         }
         if (userRepository.existsByEmail(pending.getEmail())
                 || (pending.getPhone() != null && userRepository.existsByPhone(pending.getPhone()))) {
             throw new UseCaseException(StatusCode.CONFLICT, "Email or phone is already registered");
         }
         String otp = otpGenerator.generate();
-        pending.setOtpHash(passwordEncoder.encode(otp));
-        pending.setExpiresAt(now.plus(ttl));
-        pending.setNextOtpSendAt(now.plus(cooldown));
-        pending.setFailedAttempts(0);
-        pending.setResendCount(pending.getResendCount() + 1);
-        pending.setOtpDeliveryStatus(OtpDeliveryStatus.PENDING);
-        pending.setUpdatedAt(now);
+        pending.resend(passwordEncoder.encode(otp), now, ttl, cooldown, maxResends);
         pendingRepository.saveAndFlush(pending);
         try {
             events.publishEvent(new RegistrationOtpRequested(pending.getId(), pending.getEmail(), otp,
