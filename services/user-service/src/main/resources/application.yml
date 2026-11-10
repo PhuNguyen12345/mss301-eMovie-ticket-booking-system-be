@@ -59,7 +59,10 @@ jwt:
   audience: ${JWT_AUDIENCE:e-movie}
   access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT15M}
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:P30D}
-  secret: ${JWT_SECRET:xQAtDQG6PRYfRwsOL8PODKyatJGXVtXWKeZOmeMlvvOpSYKpsYawIq1oSnVkljWK}
+  secret: ${JWT_SECRET}
+
+gateway:
+  shared-secret: ${GATEWAY_SHARED_SECRET}
 
 logging:
   level:

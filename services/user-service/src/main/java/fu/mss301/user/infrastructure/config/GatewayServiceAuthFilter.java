@@ -5,10 +5,14 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Enumeration;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -18,16 +22,38 @@ public class GatewayServiceAuthFilter extends OncePerRequestFilter {
     public static final String USER_ROLES_ATTRIBUTE = "gatewayUserRoles";
     private static final String USER_ID = "X-User-Id";
     private static final String USER_ROLES = "X-User-Roles";
+    private final byte[] gatewayKey;
+
+    public GatewayServiceAuthFilter(@Value("${gateway.shared-secret}") String sharedSecret) {
+        try {
+            if (Base64.getDecoder().decode(sharedSecret).length < 32) {
+                throw new IllegalArgumentException("Key is too short");
+            }
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw new IllegalArgumentException("GATEWAY_SHARED_SECRET must be a base64-encoded key of at least 32 bytes");
+        }
+        gatewayKey = sharedSecret.getBytes(StandardCharsets.US_ASCII);
+    }
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !(path.equals("/api/users") || path.startsWith("/api/users/")
-                || path.equals("/api/v1/users") || path.startsWith("/api/v1/users/"));
+        return !(isUserPath(path) || path.equals("/api/auth") || path.startsWith("/api/auth/")
+                || path.equals("/api/v1/auth") || path.startsWith("/api/v1/auth/"));
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        String suppliedKey = singleHeader(request, "X-Gateway-Key");
+        if (suppliedKey == null || !MessageDigest.isEqual(gatewayKey, suppliedKey.getBytes(StandardCharsets.US_ASCII))) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Gateway authentication required");
+            return;
+        }
+        if (!isUserPath(request.getRequestURI())) {
+            chain.doFilter(request, response);
+            return;
+        }
         String userIdHeader = singleHeader(request, USER_ID);
         String rolesHeader = singleHeader(request, USER_ROLES);
         if (userIdHeader == null || !userIdHeader.matches("[1-9][0-9]*")
@@ -44,6 +70,11 @@ public class GatewayServiceAuthFilter extends OncePerRequestFilter {
         Set<String> roles = Arrays.stream(rolesHeader.split(",")).collect(Collectors.toUnmodifiableSet());
         request.setAttribute(USER_ROLES_ATTRIBUTE, roles);
         chain.doFilter(request, response);
+    }
+
+    private boolean isUserPath(String path) {
+        return path.equals("/api/users") || path.startsWith("/api/users/")
+                || path.equals("/api/v1/users") || path.startsWith("/api/v1/users/");
     }
 
     private String singleHeader(HttpServletRequest request, String name) {

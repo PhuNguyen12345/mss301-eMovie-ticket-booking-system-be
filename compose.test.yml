@@ -8,6 +8,8 @@ services:
       MYSQL_ROOT_PASSWORD: test_root
     tmpfs:
       - /var/lib/mysql
+    volumes:
+      - ./tests/db/init.sql:/docker-entrypoint-initdb.d/01-test-databases.sql:ro
     healthcheck:
       test: [CMD-SHELL, 'MYSQL_PWD=showtime_test mysql -h 127.0.0.1 -u showtime showtime_test -e "SELECT 1"']
       interval: 5s
@@ -22,6 +24,18 @@ services:
       SHOWTIME_TEST_DB_URL: jdbc:mysql://test-db:3306/showtime_test
       SHOWTIME_TEST_DB_USERNAME: showtime
       SHOWTIME_TEST_DB_PASSWORD: showtime_test
+      BOOKING_TEST_DB_URL: jdbc:mysql://test-db:3306/booking_test
+      BOOKING_TEST_DB_USERNAME: root
+      BOOKING_TEST_DB_PASSWORD: test_root
+      CINEMA_TEST_DB_URL: jdbc:mysql://test-db:3306/cinema_test
+      CINEMA_TEST_DB_USERNAME: root
+      CINEMA_TEST_DB_PASSWORD: test_root
+      MOVIE_TEST_DB_URL: jdbc:mysql://test-db:3306/movie_test
+      MOVIE_TEST_DB_USERNAME: root
+      MOVIE_TEST_DB_PASSWORD: test_root
+      USER_TEST_DB_URL: jdbc:mysql://test-db:3306/user_test
+      USER_TEST_DB_USERNAME: root
+      USER_TEST_DB_PASSWORD: test_root
     volumes:
       - maven-test-cache:/root/.m2
     depends_on:

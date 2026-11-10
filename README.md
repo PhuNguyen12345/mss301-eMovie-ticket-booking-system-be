@@ -52,12 +52,38 @@ e-movie-ticket-booking-system/
 
 ## Docker
 
-Gateway, User Service, Showtime Service, Movie Service, Eureka and MySQL can run with Docker Compose. User Service is reachable only from Gateway and its own database network; it has no published host port. See [User Service gateway security](docs/USER_SERVICE_GATEWAY_SECURITY.md) before deploying outside Compose.
+Gateway, User, Cinema, Booking, Showtime, Movie, Eureka and MySQL can run with Docker Compose. User Service is reachable only from Gateway and its own database network; it has no published host port. See [User Service gateway security](docs/USER_SERVICE_GATEWAY_SECURITY.md) before deploying outside Compose.
 
 ```bash
 cp .env.example .env
+```
+
+Generate two independent keys with `openssl rand -base64 32` and set `JWT_SECRET`
+and `GATEWAY_SHARED_SECRET` in `.env`. Gateway and User Service must share these
+values. Then start the services:
+
+```bash
 docker compose up --build -d --wait
 ```
+
+## Backend tests
+
+Run `./mvnw test` for the tests that do not require a database. MySQL integration
+tests are enabled by the corresponding `BOOKING_TEST_DB_URL`, `CINEMA_TEST_DB_URL`,
+`MOVIE_TEST_DB_URL`, `SHOWTIME_TEST_DB_URL` and `USER_TEST_DB_URL` variables (with
+matching `_USERNAME` and `_PASSWORD` variables). Use disposable test databases;
+some integration tests delete fixture data.
+
+To run every backend module with all database tests enabled:
+
+```bash
+docker compose -f compose.yml -f compose.test.yml up --build --abort-on-container-exit --exit-code-from tests tests
+```
+
+The test database uses temporary storage and separate schemas per service.
+External payment, email delivery and Cloudinary uploads are not exercised by
+this suite. The existing `smoke` service uses contract stubs for some backends;
+it is not a substitute for testing real user registration and checkout.
 
 ## ⚙️ Hướng dẫn khởi chạy cục bộ
 

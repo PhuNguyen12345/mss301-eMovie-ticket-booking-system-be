@@ -16,20 +16,30 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class GatewayIdentityWebTest {
     private final UserProfileService profiles = mock(UserProfileService.class);
-    private final GatewayServiceAuthFilter filter = new GatewayServiceAuthFilter();
+    private static final String SECRET = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private final GatewayServiceAuthFilter filter = new GatewayServiceAuthFilter(SECRET);
+
+    @Test
+    void forgedIdentityCannotReachProfileController() throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(new UserProfileController(profiles))
+                .addFilters(filter).build();
+        mvc.perform(get("/api/users/me").header("X-User-Id", "42").header("X-User-Roles", "ADMIN"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(profiles);
+    }
 
     @Test
     void missingIdentityCannotReachProfileController() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new UserProfileController(profiles))
                 .addFilters(filter).build();
 
-        mvc.perform(get("/api/users/me"))
+        mvc.perform(get("/api/users/me").header("X-Gateway-Key", SECRET))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(profiles);
     }
 
     @Test
-    void forwardedIdentityReachesProfileControllerWithoutGatewayKey() throws Exception {
+    void forwardedIdentityReachesProfileControllerWithGatewayKey() throws Exception {
         when(profiles.me(42)).thenReturn(new UserProfileResponse(
                 42, "Customer", "customer@example.com", "0912345678", null, null,
                 "Ha Noi", null, null, null, null));
@@ -37,6 +47,7 @@ class GatewayIdentityWebTest {
                 .addFilters(filter).build();
 
         mvc.perform(get("/api/users/me")
+                        .header("X-Gateway-Key", SECRET)
                         .header("X-User-Id", "42")
                         .header("X-User-Roles", "CUSTOMER"))
                 .andExpect(status().isOk())

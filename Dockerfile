@@ -3,7 +3,7 @@ WORKDIR /workspace
 COPY . .
 
 FROM source AS test
-CMD ["mvn", "-B", "-ntp", "-pl", "api-gateway,services/showtime-service", "-am", "test"]
+CMD ["mvn", "-B", "-ntp", "--fail-at-end", "test"]
 
 FROM source AS build
 ARG MODULE

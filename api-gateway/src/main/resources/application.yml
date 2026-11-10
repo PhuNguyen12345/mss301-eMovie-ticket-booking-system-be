@@ -45,8 +45,9 @@ eureka:
     prefer-ip-address: true
 
 gateway:
+  shared-secret: ${GATEWAY_SHARED_SECRET}
   jwt:
-    secret: ${JWT_SECRET:xQAtDQG6PRYfRwsOL8PODKyatJGXVtXWKeZOmeMlvvOpSYKpsYawIq1oSnVkljWK}
+    secret: ${JWT_SECRET}
     issuer: ${JWT_ISSUER:user-service}
     audience: ${JWT_AUDIENCE:e-movie}
   cors:
