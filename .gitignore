@@ -36,3 +36,4 @@ build/
 
 # Local database backups and voucher codes written by tools/seed/seed_demo.py
 .seed-backups/
+__pycache__/
