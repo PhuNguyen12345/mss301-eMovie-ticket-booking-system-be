@@ -10,6 +10,7 @@
 | Suất chiếu | ~240 | 7 ngày kể từ ngày mai, từ 09:00 đến khoảng 22:30 |
 | Combo | 6 | Bắp, nước, Combo Solo, Combo Đôi, Combo Gia Đình, Nachos |
 | Voucher | 12 | Mã dễ đọc dạng `EMOVIE-...`, hạn 60 ngày |
+| Tài khoản | 1 admin, 5 khách | Đã xác thực email, đăng nhập được ngay |
 
 Giá vé:
 
@@ -29,8 +30,11 @@ Chạy ở thư mục gốc repo, khi stack Docker đang chạy (`docker-compose
 ```bash
 python3 tools/seed/seed_demo.py reset          # sao lưu cả 5 DB, in số dòng sẽ xóa, chưa xóa gì
 python3 tools/seed/seed_demo.py reset --yes    # sao lưu rồi xóa dữ liệu test
-python3 tools/seed/seed_demo.py seed           # tạo dữ liệu demo
+SEED_DEMO_ADMIN_PASSWORD='...' SEED_DEMO_CUSTOMER_PASSWORD='...' \
+  python3 tools/seed/seed_demo.py seed         # tạo dữ liệu demo và tài khoản
 ```
+
+Mật khẩu do người chạy tự đặt, không được lưu trong repo. Nếu không đặt 2 biến này, `seed` vẫn tạo dữ liệu, nhưng bỏ qua bước tài khoản.
 
 `reset --yes` xóa:
 - Toàn bộ phim, thể loại, người, suất chiếu.
@@ -42,14 +46,31 @@ python3 tools/seed/seed_demo.py seed           # tạo dữ liệu demo
 
 `seed` chạy lại nhiều lần được. Phim, combo, voucher và ghế đã có thì được bỏ qua. Suất chiếu bị trùng lịch phòng thì cũng bỏ qua.
 
+## Tài khoản demo
+
+| Email | Vai trò | Ghi chú |
+| --- | --- | --- |
+| `admin@gmail.com` | ADMIN | Có sẵn từ migration của user-service, script đặt lại mật khẩu |
+| `an.nguyen@example.com` | CUSTOMER | Nguyễn Văn An, Hà Nội |
+| `binh.tran@example.com` | CUSTOMER | Trần Thị Bình, Hồ Chí Minh |
+| `chau.le@example.com` | CUSTOMER | Lê Minh Châu, Đà Nẵng |
+| `dung.pham@example.com` | CUSTOMER | Phạm Quốc Dũng, Hà Nội |
+| `han.hoang@example.com` | CUSTOMER | Hoàng Gia Hân, Hồ Chí Minh |
+
+- **Email:** đuôi `example.com` là tên miền dành riêng cho ví dụ, nên không có email nào bị gửi tới người thật.
+- **Chạy lại:** tài khoản khách đã có thì được đặt lại mật khẩu.
+- **`reset`:** không xóa tài khoản nào.
+
 ## Biến môi trường
 
 | Biến | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `SEED_GATEWAY_URL` | `http://127.0.0.1:8080` | Địa chỉ API gateway |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | trống | Tài khoản admin dùng để seed |
+| `SEED_DEMO_ADMIN_PASSWORD` | trống | Mật khẩu đặt cho `admin@gmail.com`. Script dùng luôn tài khoản này để seed |
+| `SEED_DEMO_CUSTOMER_PASSWORD` | trống | Mật khẩu của 5 tài khoản khách |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | trống | Một tài khoản admin khác để seed, nếu không muốn dùng `admin@gmail.com` |
 
-Khi không đặt tài khoản admin, script tạo một admin tạm với mật khẩu ngẫu nhiên trong `user_db`, rồi xóa admin đó khi chạy xong, kể cả khi bị lỗi giữa chừng. Cách này cần lệnh `htpasswd`: macOS có sẵn, trên Linux cài gói `apache2-utils`.
+Khi không có tài khoản admin nào trong các biến trên, script tạo một admin tạm với mật khẩu ngẫu nhiên trong `user_db`, rồi xóa admin đó khi chạy xong, kể cả khi bị lỗi giữa chừng. Bước này và bước tài khoản cần lệnh `htpasswd`: macOS có sẵn, trên Linux cài gói `apache2-utils`.
 
 ## Poster
 
