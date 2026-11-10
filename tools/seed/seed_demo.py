@@ -55,6 +55,17 @@ COMBOS = [
     ("Nachos phô mai", "1 phần nachos kèm sốt phô mai", 69000),
 ]
 
+# Demo accounts. Passwords come from SEED_DEMO_ADMIN_PASSWORD / SEED_DEMO_CUSTOMER_PASSWORD, never from the repo.
+DEMO_ADMIN = "admin@gmail.com"  # created by the user-service migration
+CUSTOMERS = [
+    # full name, email, phone, date of birth, gender, city, district, preferred cinema code
+    ("Nguyễn Văn An", "an.nguyen@example.com", "0901234561", "1998-03-14", "Nam", "Hà Nội", "Hoàn Kiếm", "DEMO_HN"),
+    ("Trần Thị Bình", "binh.tran@example.com", "0901234562", "2001-07-22", "Nữ", "Hồ Chí Minh", "Quận 1", "DEMO_HCM"),
+    ("Lê Minh Châu", "chau.le@example.com", "0901234563", "1995-11-05", "Nữ", "Đà Nẵng", "Hải Châu", "EM_DN"),
+    ("Phạm Quốc Dũng", "dung.pham@example.com", "0901234564", "1990-01-30", "Nam", "Hà Nội", "Cầu Giấy", "DEMO_HN"),
+    ("Hoàng Gia Hân", "han.hoang@example.com", "0901234565", "2003-09-18", "Nữ", "Hồ Chí Minh", "Quận 7", "DEMO_HCM"),
+]
+
 SHOW_DAYS = 7
 FIRST_SHOW, LAST_START = dt.time(9, 0), dt.time(22, 30)
 CLEANING = dt.timedelta(minutes=15)
@@ -177,6 +188,54 @@ class Api:
             page += 1
 
 
+def bcrypt(password):
+    try:
+        out = subprocess.run(["htpasswd", "-bnBC", "10", "", password], capture_output=True, text=True, check=True).stdout
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        raise SystemExit("htpasswd is missing. Install apache2-utils (Linux) or set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.")
+    return out.strip().lstrip(":").replace("$2y$", "$2a$", 1)
+
+
+def quote(value):
+    return "NULL" if value is None else "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def seed_users():
+    """Sets the demo admin password and creates verified customers; existing customers get the password again."""
+    admin_password = os.environ.get("SEED_DEMO_ADMIN_PASSWORD")
+    customer_password = os.environ.get("SEED_DEMO_CUSTOMER_PASSWORD")
+    if not admin_password and not customer_password:
+        print("  users: skipped (set SEED_DEMO_ADMIN_PASSWORD and SEED_DEMO_CUSTOMER_PASSWORD)")
+        return
+    statements = []
+    if admin_password:
+        statements.append(f"UPDATE users SET password_hash = {quote(bcrypt(admin_password))}, status = 'ACTIVE', "
+                          f"email_verified_at = COALESCE(email_verified_at, NOW(6)), updated_at = NOW(6) "
+                          f"WHERE email = {quote(DEMO_ADMIN)};")
+    if customer_password:
+        hashed = bcrypt(customer_password)
+        for name, email, phone, born, gender, city, district, cinema in CUSTOMERS:
+            statements.append(f"""
+                INSERT INTO users (full_name, email, phone, password_hash, date_of_birth, gender, city_province, district,
+                                   status, email_verified_at, created_at, updated_at)
+                VALUES ({quote(name)}, {quote(email)}, {quote(phone)}, {quote(hashed)}, {quote(born)}, {quote(gender)},
+                        {quote(city)}, {quote(district)}, 'ACTIVE', NOW(6), NOW(6), NOW(6))
+                ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), status = 'ACTIVE', updated_at = NOW(6);
+                INSERT IGNORE INTO user_roles (user_id, role_id)
+                SELECT u.id, r.id FROM users u JOIN roles r ON r.name = 'CUSTOMER' WHERE u.email = {quote(email)};""")
+    sql("user-db", "\n".join(statements))
+    print(f"  users: admin {DEMO_ADMIN if admin_password else '(unchanged)'}, "
+          f"{len(CUSTOMERS) if customer_password else 0} customers")
+
+
+def set_preferred_cinemas():
+    if not os.environ.get("SEED_DEMO_CUSTOMER_PASSWORD"):
+        return
+    codes = dict(line.split("\t") for line in sql("cinema-db", "SELECT code, id FROM cinemas;").split("\n") if line)
+    sql("user-db", "\n".join(f"UPDATE users SET preferred_cinema_id = {codes[c]} WHERE email = {quote(e)};"
+                             for _, e, *_, c in CUSTOMERS if c in codes))
+
+
 class TemporaryAdmin:
     """An admin account that exists only while the seed runs, unless SEED_ADMIN_* are given."""
 
@@ -185,14 +244,13 @@ class TemporaryAdmin:
         if all(given):
             self.created = False
             return given
+        if os.environ.get("SEED_DEMO_ADMIN_PASSWORD"):
+            self.created = False
+            return DEMO_ADMIN, os.environ["SEED_DEMO_ADMIN_PASSWORD"]
         self.created = True
         self.email = f"seed-admin-{uuid.uuid4().hex[:10]}@example.invalid"
         password = secrets.token_urlsafe(18) + "Aa1"
-        try:
-            hashed = subprocess.run(["htpasswd", "-bnBC", "10", "", password], capture_output=True, text=True,
-                                    check=True).stdout.strip().lstrip(":").replace("$2y$", "$2a$", 1)
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            raise SystemExit("htpasswd is missing. Install apache2-utils or set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.")
+        hashed = bcrypt(password)
         sql("user-db", f"""
             INSERT INTO users (full_name, email, password_hash, status, email_verified_at, created_at)
             VALUES ('Seed Admin', '{self.email}', '{hashed}', 'ACTIVE', NOW(6), NOW(6));
@@ -369,6 +427,7 @@ def seed_vouchers(api, combos, types):
 
 def seed(upload_posters):
     movies = json.loads((HERE / "movies.json").read_text(encoding="utf-8"))
+    seed_users()
     with TemporaryAdmin() as (email, password):
         api = Api(email, password)
         print("Seeding through", GATEWAY)
@@ -377,6 +436,7 @@ def seed(upload_posters):
         combos = seed_combos(api)
         seed_vouchers(api, combos, types)
         seed_showtimes(api, created, screens, types)
+    set_preferred_cinemas()
     print("Done.")
 
 
