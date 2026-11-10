@@ -59,6 +59,8 @@ cp .env.example .env
 docker compose up --build -d --wait
 ```
 
+Để có dữ liệu demo (phim thật có poster, 3 rạp, suất chiếu 7 ngày, combo và voucher), xem [tools/seed/README.md](tools/seed/README.md).
+
 ## ⚙️ Hướng dẫn khởi chạy cục bộ
 
 *(Phần này sẽ được bổ sung chi tiết sau khi chốt cấu hình `application.yml` cho từng môi trường)*
