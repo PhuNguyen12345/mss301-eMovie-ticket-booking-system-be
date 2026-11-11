@@ -1,6 +1,7 @@
 package fu.mss301.user.application.projection;
 
 import fu.mss301.user.application.usecase.dto.UserProfileResponse;
+import fu.mss301.user.application.usecase.dto.UserSummary;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -13,6 +14,10 @@ public record UserProfileView(
 
     public boolean isActiveAndVerified() {
         return "ACTIVE".equals(status) && emailVerifiedAt != null;
+    }
+
+    public UserSummary toSummary() {
+        return new UserSummary(userId, fullName, email, phone, status);
     }
 
     public UserProfileResponse toResponse() {

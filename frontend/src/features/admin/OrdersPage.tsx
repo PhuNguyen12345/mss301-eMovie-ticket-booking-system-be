@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../app/ServicesProvider";
 import { Button } from "../../components/ui/Button";
 import { Field } from "../../components/ui/Field";
@@ -11,7 +12,7 @@ import { Pagination } from "../../components/ui/Pagination";
 import { Placeholder } from "../../components/ui/Placeholder";
 import { BookingCard } from "../booking/BookingCard";
 import type { BookingSearch } from "../booking/api";
-import { useBookingSearch } from "./hooks";
+import { useBookingSearch, useCustomers } from "./hooks";
 export function OrdersPage() {
   const { mode } = useSession();
   if (mode === "demo")
@@ -26,9 +27,18 @@ export function OrdersPage() {
   return <OrderSearch />;
 }
 function OrderSearch() {
-  const [filters, setFilters] = useState<BookingSearch>({ page: 0, size: 10 });
+  const [params] = useSearchParams();
+  const initialUser = Number(params.get("userId")) || undefined;
+  const [filters, setFilters] = useState<BookingSearch>({
+    page: 0,
+    size: 10,
+    userId: initialUser,
+  });
   const [error, setError] = useState<unknown>(null);
   const query = useBookingSearch(filters);
+  const customers = useCustomers(
+    query.data?.data.map((booking) => booking.userId) ?? [],
+  );
   return (
     <main className="page">
       <div className="page-heading">
@@ -79,7 +89,13 @@ function OrderSearch() {
           </select>
         </Field>
         <Field label="ID khách hàng">
-          <input name="userId" type="number" min={1} step={1} />
+          <input
+            name="userId"
+            type="number"
+            min={1}
+            step={1}
+            defaultValue={initialUser}
+          />
         </Field>
         <Field label="ID suất chiếu">
           <input name="showtimeId" type="number" min={1} step={1} />
@@ -95,6 +111,11 @@ function OrderSearch() {
         </Button>
       </form>
       <ErrorMessage error={error} />
+      {customers.isError && (
+        <p className="muted">
+          Không tải được tên khách hàng, đang hiển thị mã khách.
+        </p>
+      )}
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
@@ -109,7 +130,12 @@ function OrderSearch() {
           <p className="muted">{query.data.totalElements} đơn vé</p>
           <div className="booking-list">
             {query.data.data.map((booking) => (
-              <BookingCard key={booking.id} booking={booking} admin />
+              <BookingCard
+                key={booking.id}
+                booking={booking}
+                admin
+                customer={customers.data?.get(booking.userId)}
+              />
             ))}
           </div>
           {!query.data.data.length && (

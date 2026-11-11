@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSession } from "../../app/ServicesProvider";
 import { Button } from "../../components/ui/Button";
 import { Field } from "../../components/ui/Field";
@@ -28,7 +28,13 @@ export function PaymentsPage() {
   );
 }
 function History() {
-  const [filters, setFilters] = useState<PaymentSearch>({ page: 0, size: 20 });
+  const [params] = useSearchParams();
+  const initialBooking = Number(params.get("bookingId")) || undefined;
+  const [filters, setFilters] = useState<PaymentSearch>({
+    page: 0,
+    size: 20,
+    bookingId: initialBooking,
+  });
   const [error, setError] = useState<unknown>();
   const query = usePayments(filters);
   return (
@@ -83,6 +89,7 @@ function History() {
             min={1}
             max={2147483647}
             step={1}
+            defaultValue={initialBooking}
           />
         </Field>
         <Field label="Mã giao dịch">
@@ -126,7 +133,7 @@ function History() {
                   <div className="page-heading">
                     <div>
                       <h2>Giao dịch #{p.orderCode}</h2>
-                      <Link to={`/bookings/${p.bookingId}`}>
+                      <Link to={`/admin/orders/${p.bookingId}`}>
                         {p.bookingCode} · Đơn #{p.bookingId}
                       </Link>
                       <p className="muted">

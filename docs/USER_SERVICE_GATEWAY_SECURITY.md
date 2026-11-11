@@ -11,3 +11,8 @@ Outside Compose, User Service binds to loopback by default. Set `SERVER_ADDRESS`
 For Kubernetes or another deployment platform, apply an equivalent network policy or firewall rule: allow inbound traffic to User Service port 8081 only from API Gateway, keep the database private, and expose only the Gateway endpoint. Verify the policy from outside the cluster and from an unrelated workload before accepting forwarded identity headers. Running User Service directly on a public interface without that restriction is unsafe, even if its header validation tests pass.
 
 The filter is a single servlet `@Component` registered by Spring Boot. User Service does not define a Spring Security filter chain or manually register the same filter, so it runs once per request. Its path check limits identity validation to user endpoints.
+
+## Customer lookup for staff
+
+`GET /api/users?ids=73,74` returns `userId`, `fullName`, `email`, `phone` and `status` for up to 100 users, in the order asked; unknown ids are left out. It is ADMIN only: the gateway already restricts `/api/users/**` to ADMIN except `/api/users/me`, and User Service checks the `ADMIN` role from `X-User-Roles` again. Missing, non-positive, non-numeric or more than 100 ids return 400. Dates of birth, addresses and credentials are never returned. The admin order screens use it to show who placed an order.
+

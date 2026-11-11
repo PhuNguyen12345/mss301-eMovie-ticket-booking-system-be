@@ -30,7 +30,7 @@ export function AppShell() {
           <NavLink to="/vouchers">Ưu đãi</NavLink>
           <NavLink to="/account">Tài khoản</NavLink>
           {(session.isAdmin || session.mode === "demo") && (
-            <NavLink to="/admin/showtimes">Quản trị</NavLink>
+            <NavLink to="/admin">Quản trị</NavLink>
           )}
         </nav>
         <div className="topbar-actions">
