@@ -1,5 +1,6 @@
 package fu.mss301.booking.application.booking;
 
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.VoucherNotFoundException;
 import fu.mss301.booking.application.port.DomainEvents;
@@ -54,7 +55,8 @@ public class ApplyVoucherUseCase {
             var booking = bookings.findById(bookingId).filter(b -> b.isOwnedBy(userId))
                 .orElseThrow(BookingNotFoundException::new);
             if (!booking.isPayableAt(LocalDateTime.now(clock))) {
-                throw new InvalidStateTransitionException("Booking is not awaiting payment or its seat hold has expired");
+                throw new InvalidStateTransitionException(ErrorCode.BOOKING_NOT_PENDING,
+                    "Booking is not awaiting payment or its seat hold has expired");
             }
             return null;
         });
@@ -96,7 +98,8 @@ public class ApplyVoucherUseCase {
             .orElseThrow(BookingNotFoundException::new);
         // An open PayOS link carries the old amount, and a different paid amount would be rejected.
         if (!payments.findPendingByBookingIdForUpdate(bookingId).isEmpty()) {
-            throw new InvalidStateTransitionException("Vouchers cannot be changed after a payment link was created");
+            throw new InvalidStateTransitionException(ErrorCode.PAYMENT_LINK_OPEN,
+                "Vouchers cannot be changed after a payment link was created");
         }
         return booking;
     }

@@ -1,5 +1,7 @@
 package fu.mss301.booking.domain.booking;
 
+import java.util.Map;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.domain.booking.event.BookingCancelled;
 import fu.mss301.booking.domain.booking.event.BookingConfirmed;
 import fu.mss301.booking.domain.booking.event.BookingExpired;
@@ -91,7 +93,8 @@ public final class Booking {
         if (showtimeId == null || showtimeId <= 0) throw new DomainException("Showtime id must be positive");
         if (ticket == null) throw new DomainException("Ticket details are required");
         if (selections == null || selections.isEmpty()) throw new DomainException("At least one seat is required");
-        if (selections.size() > maxSeats) throw new DomainException("A booking can hold at most " + maxSeats + " seats");
+        if (selections.size() > maxSeats) throw new DomainException(ErrorCode.SEAT_LIMIT,
+            "A booking can hold at most " + maxSeats + " seats", Map.of("max", maxSeats));
         if (holdTtl == null || holdTtl.isNegative() || holdTtl.isZero()) throw new DomainException("Hold TTL must be positive");
         var seen = new HashSet<Integer>();
         for (SeatSelection selection : selections) {
@@ -216,7 +219,8 @@ public final class Booking {
         for (ComboSelection selection : selections) {
             if (!seen.add(selection.comboId())) throw new DomainException("Combo " + selection.comboId() + " is selected twice");
             if (selection.quantity() == null || selection.quantity() < 1 || selection.quantity() > MAX_COMBO_QUANTITY) {
-                throw new DomainException("Combo quantity must be between 1 and " + MAX_COMBO_QUANTITY);
+                throw new DomainException(ErrorCode.COMBO_QUANTITY,
+                    "Combo quantity must be between 1 and " + MAX_COMBO_QUANTITY, Map.of("max", MAX_COMBO_QUANTITY));
             }
             var current = existing.get(selection.comboId());
             replaced.add(current == null ? BookingCombo.add(selection) : current.replacedBy(selection));
@@ -240,18 +244,23 @@ public final class Booking {
     public void applyVoucher(VoucherOffer offer, Integer seatId, LocalDateTime now) {
         requireEditable("apply a voucher to", now);
         if (offer == null) throw new DomainException("Voucher is required");
-        if (hasVoucher(offer.voucherId())) throw new InvalidStateTransitionException("This voucher is already applied");
-        if (now.toLocalDate().isAfter(offer.expiresOn())) throw new DomainException("This voucher has expired");
+        if (hasVoucher(offer.voucherId())) throw new InvalidStateTransitionException(ErrorCode.VOUCHER_ALREADY_APPLIED, "This voucher is already applied");
+        if (now.toLocalDate().isAfter(offer.expiresOn())) {
+            throw new DomainException(ErrorCode.VOUCHER_EXPIRED, "This voucher has expired");
+        }
         boolean exchangesSeat = offer.kind() == VoucherKind.TICKET_EXCHANGE;
-        if (exchangesSeat && seatId == null) throw new DomainException("Choose the seat this voucher pays for");
+        if (exchangesSeat && seatId == null) {
+            throw new DomainException(ErrorCode.VOUCHER_SEAT_REQUIRED, "Choose the seat this voucher pays for");
+        }
         if (!exchangesSeat && seatId != null) throw new DomainException("Only a ticket exchange voucher takes a seat");
 
         var candidates = new ArrayList<>(vouchers);
         candidates.add(BookingVoucher.apply(offer, seatId, now));
         var pricing = VoucherPricing.price(seats, combos, candidates, true);
         if (!isPayable(subtotal().subtract(pricing.discount()))) {
-            throw new DomainException("A voucher cannot leave less than " + MIN_PAYMENT.toPlainString()
-                + " VND to pay, the bank does not accept smaller transfers");
+            throw new DomainException(ErrorCode.VOUCHER_MIN_PAYMENT, "A voucher cannot leave less than "
+                + MIN_PAYMENT.toPlainString() + " VND to pay, the bank does not accept smaller transfers",
+                Map.of("minPayment", MIN_PAYMENT));
         }
         vouchers.add(candidates.getLast());
         applyPricing(pricing, now);
@@ -318,19 +327,24 @@ public final class Booking {
     public void checkIn(Integer quantity, Integer staffId, LocalDateTime startTime, CheckInWindow window,
                         LocalDateTime now) {
         if (status != BookingStatus.CONFIRMED) {
-            throw new InvalidStateTransitionException("Only a paid booking can be checked in, this one is " + status);
+            throw new InvalidStateTransitionException(ErrorCode.CHECK_IN_NOT_PAID,
+                "Only a paid booking can be checked in, this one is " + status, Map.of("status", status.name()));
         }
         if (startTime == null) throw new DomainException("Showtime start is required");
         if (!window.isOpenAt(startTime, now)) {
-            throw new InvalidStateTransitionException("Check-in for this showtime is open from "
-                + window.opensAt(startTime) + " to " + window.closesAt(startTime));
+            throw new InvalidStateTransitionException(ErrorCode.CHECK_IN_NOT_OPEN,
+                "Check-in for this showtime is open from " + window.opensAt(startTime) + " to "
+                    + window.closesAt(startTime),
+                Map.of("startTime", startTime, "opensAt", window.opensAt(startTime),
+                    "closesAt", window.closesAt(startTime)));
         }
         int remaining = remainingToAdmit();
         if (remaining == 0) throw new AlreadyCheckedInException();
         int admitting = quantity == null ? remaining : quantity;
         if (admitting < 1 || admitting > remaining) {
-            throw new DomainException("Only " + remaining + (remaining == 1 ? " person" : " people")
-                + " can still be checked in with this code");
+            throw new DomainException(ErrorCode.CHECK_IN_TOO_MANY, "Only " + remaining
+                + (remaining == 1 ? " person" : " people") + " can still be checked in with this code",
+                Map.of("remaining", remaining));
         }
         checkIns.add(BookingCheckIn.record(admitting, staffId, now));
         updatedAt = now;
@@ -405,12 +419,15 @@ public final class Booking {
 
     private void requireEditable(String action, LocalDateTime now) {
         requirePending(action);
-        if (!now.isBefore(expiredAt)) throw new InvalidStateTransitionException("Booking seat hold has expired");
+        if (!now.isBefore(expiredAt)) {
+            throw new InvalidStateTransitionException(ErrorCode.HOLD_EXPIRED, "Booking seat hold has expired");
+        }
     }
 
     private void requirePending(String action) {
         if (status != BookingStatus.PENDING_PAYMENT) {
-            throw new InvalidStateTransitionException("Cannot " + action + " a booking in status " + status);
+            throw new InvalidStateTransitionException(ErrorCode.BOOKING_NOT_PENDING,
+                "Cannot " + action + " a booking in status " + status, Map.of("status", status.name()));
         }
     }
 }

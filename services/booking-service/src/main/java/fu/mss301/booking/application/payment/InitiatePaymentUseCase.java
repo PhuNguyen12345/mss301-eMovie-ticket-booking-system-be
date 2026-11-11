@@ -1,5 +1,7 @@
 package fu.mss301.booking.application.payment;
 
+import java.util.Map;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.port.DomainEvents;
 import fu.mss301.booking.application.port.Transactions;
@@ -83,24 +85,28 @@ public class InitiatePaymentUseCase {
         var booking = bookings.findByIdForUpdate(bookingId).filter(b -> b.isOwnedBy(userId))
             .orElseThrow(BookingNotFoundException::new);
         if (!booking.isPayableAt(now)) {
-            throw new InvalidStateTransitionException("Booking is not awaiting payment or its seat hold has expired");
+            throw new InvalidStateTransitionException(ErrorCode.BOOKING_NOT_PENDING,
+                "Booking is not awaiting payment or its seat hold has expired");
         }
         var open = payments.findPendingByBookingIdForUpdate(bookingId);
         if (!open.isEmpty()) {
             var current = open.getFirst();
             if (current.checkoutUrl() == null) {
-                throw new InvalidStateTransitionException("A payment link is already being created for this booking");
+                throw new InvalidStateTransitionException(ErrorCode.PAYMENT_IN_PROGRESS,
+                    "A payment link is already being created for this booking");
             }
             return new Draft(PaymentView.of(current), null, 0, 0, null);
         }
         if (booking.hasExpiredVoucherOn(now.toLocalDate())) {
             // A voucher expired at midnight between the two steps; this transaction must not change the booking.
-            throw new InvalidStateTransitionException("A voucher on this booking has just expired, please try again");
+            throw new InvalidStateTransitionException(ErrorCode.VOUCHER_EXPIRED,
+                "A voucher on this booking has just expired, please try again");
         }
         if (!booking.hasPayableAmount()) {
             // Reached when combos change after vouchers were applied, or when a showtime is priced below it.
-            throw new DomainException("The amount to pay must be 0 or at least " + Booking.MIN_PAYMENT.toPlainString()
-                + " VND, please change the vouchers or combos");
+            throw new DomainException(ErrorCode.VOUCHER_MIN_PAYMENT, "The amount to pay must be 0 or at least "
+                + Booking.MIN_PAYMENT.toPlainString() + " VND, please change the vouchers or combos",
+                Map.of("minPayment", Booking.MIN_PAYMENT));
         }
         if (booking.totalAmount().signum() == 0) {
             booking.confirm(now);
@@ -109,7 +115,10 @@ public class InitiatePaymentUseCase {
             return new Draft(PaymentView.notRequired(bookingId), null, 0, 0, null);
         }
         long attempt = payments.countByBookingId(bookingId) + 1;
-        if (attempt > MAX_ATTEMPTS) throw new InvalidStateTransitionException("Too many payment attempts for this booking");
+        if (attempt > MAX_ATTEMPTS) {
+            throw new InvalidStateTransitionException(ErrorCode.PAYMENT_ATTEMPTS_EXCEEDED,
+                "Too many payment attempts for this booking");
+        }
         long amount = wholeVnd(booking.totalAmount());
         var payment = payments.save(PaymentTransaction.initiate(bookingId, booking.totalAmount(),
             bookingId * 100L + attempt, now));

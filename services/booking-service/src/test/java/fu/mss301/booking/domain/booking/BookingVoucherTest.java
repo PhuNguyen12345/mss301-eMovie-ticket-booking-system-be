@@ -2,6 +2,7 @@ package fu.mss301.booking.domain.booking;
 
 import fu.mss301.booking.domain.booking.event.BookingVoucherRemoved;
 import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 import fu.mss301.booking.domain.voucher.DiscountType;
 import fu.mss301.booking.domain.voucher.VoucherKind;
@@ -289,6 +290,35 @@ class BookingVoucherTest {
         assertEquals(new BigDecimal("205000.00"), restored.totalAmount());
         assertTrue(restored.hasVoucher(1));
         assertThrows(UnsupportedOperationException.class, () -> restored.vouchers().clear());
+    }
+
+    @Test
+    void refusedVouchersCarryAStableCodeAndWhatTheClientNeedsToExplainIt() {
+        Booking booking = booking();
+        var minOrder = assertThrows(DomainException.class, () -> booking.applyVoucher(new VoucherOffer(1, "EM30K",
+            VoucherKind.TICKET_DISCOUNT, DiscountType.FIXED, new BigDecimal("30000"), new BigDecimal("500000"), null,
+            null, LAST_DAY), null, NOW));
+        assertEquals(ErrorCode.VOUCHER_MIN_ORDER, minOrder.code());
+        assertEquals(new BigDecimal("500000"), minOrder.details().get("minOrderAmount"));
+
+        var noCombo = assertThrows(DomainException.class, () -> booking.applyVoucher(comboExchange(2, 5), null, NOW));
+        assertEquals(ErrorCode.VOUCHER_NOT_APPLICABLE, noCombo.code());
+        assertEquals("NO_MATCHING_COMBO", noCombo.details().get("reason"));
+
+        var noSeat = assertThrows(DomainException.class, () -> booking.applyVoucher(offer(3, VoucherKind.TICKET_EXCHANGE), null, NOW));
+        assertEquals(ErrorCode.VOUCHER_SEAT_REQUIRED, noSeat.code());
+
+        booking.applyVoucher(percent(4, VoucherKind.TICKET_DISCOUNT, "10"), null, NOW);
+        var again = assertThrows(InvalidStateTransitionException.class,
+            () -> booking.applyVoucher(percent(4, VoucherKind.TICKET_DISCOUNT, "10"), null, NOW));
+        assertEquals(ErrorCode.VOUCHER_ALREADY_APPLIED, again.code());
+        var second = assertThrows(DomainException.class,
+            () -> booking.applyVoucher(percent(5, VoucherKind.TICKET_DISCOUNT, "10"), null, NOW));
+        assertEquals("ONE_PER_KIND", second.details().get("reason"));
+
+        var expired = assertThrows(InvalidStateTransitionException.class,
+            () -> booking.applyVoucher(percent(6, VoucherKind.COMBO_DISCOUNT, "10"), null, NOW.plusMinutes(10)));
+        assertEquals(ErrorCode.HOLD_EXPIRED, expired.code());
     }
 
     private static Booking booking() {

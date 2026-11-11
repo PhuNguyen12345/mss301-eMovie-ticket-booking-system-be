@@ -1,5 +1,8 @@
 package fu.mss301.booking.infrastructure.web.controller;
 
+import fu.mss301.booking.application.exception.BookingNotFoundException;
+import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.application.booking.BookingPage;
 import fu.mss301.booking.application.payment.PaymentHistoryQuery;
 import fu.mss301.booking.application.payment.PaymentHistoryView;
@@ -204,6 +207,7 @@ class BookingControllerTests {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101,102]}"))
             .andExpect(status().isCreated())
             .andExpect(header().string("Location", "http://localhost/api/bookings/11"))
+            .andExpect(jsonPath("$.code").doesNotExist())
             .andExpect(jsonPath("$.status").value(201))
             .andExpect(jsonPath("$.data.status").value("PENDING_PAYMENT"));
     }
@@ -288,14 +292,17 @@ class BookingControllerTests {
         when(vouchers.apply(7, 11, "NOPE", null)).thenThrow(new VoucherNotFoundException());
         mvc.perform(post("/api/bookings/11/vouchers").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"NOPE\"}"))
-            .andExpect(status().isNotFound());
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("VOUCHER_NOT_FOUND"));
     }
 
     @Test
     void removingAVoucherUsesDelete() throws Exception {
         when(vouchers.remove(7, 11, 9)).thenThrow(new InvalidStateTransitionException("link open"));
         mvc.perform(delete("/api/bookings/11/vouchers/9").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
-            .andExpect(status().isConflict());
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("CONFLICT"))
+            .andExpect(jsonPath("$.message").value("link open"));
         verify(vouchers).remove(7, 11, 9);
     }
 
@@ -334,12 +341,51 @@ class BookingControllerTests {
     }
 
     @Test
+    void checkInOutsideTheWindowSaysWhenItOpensAndCloses() throws Exception {
+        LocalDateTime start = LocalDateTime.of(2026, 11, 11, 13, 25);
+        when(checkIn.checkIn(1, "BK1", 1)).thenThrow(new InvalidStateTransitionException(ErrorCode.CHECK_IN_NOT_OPEN,
+            "Check-in for this showtime is open from 2026-11-11T13:10 to 2026-11-11T13:45",
+            Map.of("startTime", start, "opensAt", start.minusMinutes(15), "closesAt", start.plusMinutes(20))));
+        mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"BK1\",\"quantity\":1}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("CHECK_IN_NOT_OPEN"))
+            .andExpect(jsonPath("$.data.opensAt").value("2026-11-11T13:10:00"))
+            .andExpect(jsonPath("$.data.closesAt").value("2026-11-11T13:45:00"))
+            .andExpect(jsonPath("$.data.startTime").value("2026-11-11T13:25:00"));
+    }
+
+    @Test
+    void errorsWithoutAReasonGetTheGenericCodeOfTheirStatus() throws Exception {
+        when(checkIn.checkIn(1, "BK1", 1)).thenThrow(new DomainException("Booking code is required"));
+        mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"BK1\",\"quantity\":1}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+            .andExpect(jsonPath("$.data").doesNotExist());
+        when(holdSeats.hold(7, 3L, List.of(101))).thenThrow(new SeatUnavailableException("taken"));
+        mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3,\"seatIds\":[101]}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("SEAT_UNAVAILABLE"));
+        mvc.perform(post("/api/bookings").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"showtimeId\":3}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        when(queries.getBooking(7, false, 404)).thenThrow(new BookingNotFoundException());
+        mvc.perform(get("/api/bookings/404").header("X-User-Id", "7").header("X-User-Roles", "CUSTOMER"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("BOOKING_NOT_FOUND"));
+    }
+
+    @Test
     void aUsedTicketIs409WithItsEarlierScans() throws Exception {
         when(checkIn.checkIn(1, "BK1", null)).thenThrow(new TicketAlreadyUsedException(checkInView(3, 0)));
         mvc.perform(post("/api/bookings/check-in").header("X-User-Id", "1").header("X-User-Roles", "ADMIN")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"bookingCode\":\"BK1\"}"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.message").value("Every seat of this booking has already been checked in"))
+            .andExpect(jsonPath("$.code").value("TICKET_ALREADY_USED"))
             .andExpect(jsonPath("$.data.remaining").value(0))
             .andExpect(jsonPath("$.data.checkIns[0].checkedInAt").value("2027-01-21T18:50:00"));
     }

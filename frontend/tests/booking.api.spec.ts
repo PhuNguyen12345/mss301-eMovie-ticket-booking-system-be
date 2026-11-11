@@ -38,6 +38,7 @@ async function mockApi(page: Page) {
     userId: 7,
     seatsStatus: 200,
     holdStatus: 201,
+    holdCode: undefined as string | undefined,
     payStatus: 200,
     syncStatus: 200,
     holdCalls: 0,
@@ -145,7 +146,17 @@ async function mockApi(page: Page) {
         state.seats[0].status = "HELD";
         return state.holdStatus === 201
           ? send(state.booking, 201)
-          : send(null, state.holdStatus, "Ghế vừa được người khác giữ.");
+          : state.holdCode
+            ? route.fulfill({
+                status: state.holdStatus,
+                json: {
+                  status: state.holdStatus,
+                  code: state.holdCode,
+                  message: "One or more selected seats are no longer available",
+                  data: null,
+                },
+              })
+            : send(null, state.holdStatus, "Ghế vừa được người khác giữ.");
       }
       if (path === "/api/bookings/me")
         return send(paged(state.userId === 7 ? [state.booking] : []));
@@ -340,6 +351,22 @@ test("seat conflicts refresh availability without retrying the hold", async ({
     page.getByRole("button", { name: "Giữ ghế & tiếp tục" }),
   ).toBeDisabled();
   expect(state.holdCalls).toBe(1);
+});
+
+test("a coded seat conflict is explained in Vietnamese, not with the server's English", async ({
+  page,
+}) => {
+  const state = await mockApi(page);
+  state.holdStatus = 409;
+  state.holdCode = "SEAT_UNAVAILABLE";
+  await page.goto("/showtimes/7/seats");
+  await login(page);
+  await page.getByRole("button", { name: /Ghế A1/ }).click();
+  await page.getByRole("button", { name: "Giữ ghế & tiếp tục" }).click();
+  await expect(
+    page.getByText("Ghế bạn chọn vừa có người đặt. Vui lòng chọn ghế khác."),
+  ).toBeVisible();
+  await expect(page.getByText(/no longer available/)).toHaveCount(0);
 });
 
 test("unavailable cinema dependency never generates fake seats", async ({
