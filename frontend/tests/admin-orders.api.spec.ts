@@ -15,6 +15,7 @@ async function setup(page: Page, role: "ADMIN" | "CUSTOMER" = "ADMIN") {
   const state = {
     calls: [] as { path: string; query: string; body: unknown }[],
     usersStatus: 200,
+    checkInClosed: false,
     booking: {
       id: 12,
       bookingCode: "BK261111113015WRTYLY",
@@ -112,6 +113,21 @@ async function setup(page: Page, role: "ADMIN" | "CUSTOMER" = "ADMIN") {
           status: 200,
           contentType: "image/png",
           body: Buffer.from([137, 80, 78, 71]),
+        });
+      if (path === "/api/bookings/check-in" && state.checkInClosed)
+        return route.fulfill({
+          status: 409,
+          json: {
+            status: 409,
+            code: "CHECK_IN_NOT_OPEN",
+            message:
+              "Check-in for this showtime is open from 2026-11-11T13:10 to 2026-11-11T13:45",
+            data: {
+              startTime: "2026-11-11T13:25:00",
+              opensAt: "2026-11-11T13:10:00",
+              closesAt: "2026-11-11T13:45:00",
+            },
+          },
         });
       if (path === "/api/bookings/check-in") {
         const quantity = Number((body as { quantity?: number })?.quantity);
@@ -229,4 +245,23 @@ test("customers keep their own ticket page and cannot open the admin order view"
     page.getByRole("heading", { name: "Chi tiết đơn vé" }),
   ).toHaveCount(0);
   expect(state.calls.some((c) => c.path === "/api/users")).toBe(false);
+});
+
+test("check-in outside the window is explained in Vietnamese with the opening hours", async ({
+  page,
+}) => {
+  const state = await setup(page);
+  state.checkInClosed = true;
+  await page.clock.setFixedTime(new Date("2026-11-11T12:00:00+07:00"));
+  await page.goto("/admin/orders/12");
+  await page.getByRole("button", { name: "Cho khách vào" }).click();
+  await page.getByRole("button", { name: "Xác nhận soát vé" }).click();
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByText(
+        "Chưa đến giờ soát vé. Suất 13:25 ngày 11/11/2026 soát vé từ 13:10 đến 13:45.",
+      ),
+  ).toBeVisible();
+  await expect(page.getByText(/2026-11-11T13:10/)).toHaveCount(0);
 });

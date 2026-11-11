@@ -59,6 +59,53 @@ Service được viết theo **Clean Architecture** – xem [BOOKING_ARCHITECTUR
 | 502 | PayOS lỗi / chưa cấu hình khi tạo link |
 | 503 | showtime-service hoặc cinema-service không phản hồi |
 
+### Mã lỗi (`code`)
+
+Mọi lỗi 4xx của booking-service (trừ 401 và 403) có thêm field `code`, là mã cố định để client hiển thị câu của mình. `message` vẫn là câu tiếng Anh dành cho log, không nên hiện cho người dùng. Response thành công không có `code`. Một số mã có `data` chứa giá trị client cần để viết câu thông báo.
+
+```json
+{"status": 409, "code": "CHECK_IN_NOT_OPEN",
+ "message": "Check-in for this showtime is open from 2026-11-11T13:10 to 2026-11-11T13:45",
+ "data": {"startTime": "2026-11-11T13:25:00", "opensAt": "2026-11-11T13:10:00", "closesAt": "2026-11-11T13:45:00"}}
+```
+
+| Mã | HTTP | Ý nghĩa | `data` |
+| --- | --- | --- | --- |
+| `CHECK_IN_NOT_OPEN` | 409 | Ngoài giờ soát vé | `startTime`, `opensAt`, `closesAt` |
+| `CHECK_IN_NOT_PAID` | 409 | Đơn chưa thanh toán, đã hủy, hết hạn hoặc suất bị hủy | `status` |
+| `CHECK_IN_TOO_MANY` | 400 | Số khách vượt số vé còn lại | `remaining` |
+| `TICKET_ALREADY_USED` | 409 | Vé đã vào đủ khách | Thông tin đơn và các lần soát, như mục 2.11 |
+| `BOOKING_NOT_FOUND` | 404 | Không có đơn, hoặc đơn của người khác | |
+| `SHOWTIME_NOT_OPEN` | 409 | Suất đã bắt đầu hoặc không còn mở bán | |
+| `SEAT_UNAVAILABLE` | 409 | Ghế vừa có người giữ hoặc đặt | |
+| `SEAT_OUT_OF_SERVICE` | 409 | Ghế đang bảo trì | |
+| `SEAT_LIMIT` | 400 | Quá số ghế cho phép mỗi đơn | `max` |
+| `BOOKING_NOT_PENDING` | 409 | Đơn không còn chờ thanh toán | `status` (nếu có) |
+| `HOLD_EXPIRED` | 409 | Đã hết thời gian giữ ghế | |
+| `PAYMENT_LINK_OPEN` | 409 | Đang có link PayOS, không đổi được combo hoặc voucher | |
+| `PAYMENT_IN_PROGRESS` | 409 | Link thanh toán đang được tạo | |
+| `PAYMENT_ATTEMPTS_EXCEEDED` | 409 | Tạo link quá số lần cho phép | |
+| `COMBO_NOT_FOUND` | 404 | Combo không tồn tại | |
+| `COMBO_UNAVAILABLE` | 409 | Combo đã ngừng bán | |
+| `COMBO_QUANTITY` | 400 | Số lượng combo ngoài khoảng cho phép | `max` |
+| `VOUCHER_NOT_FOUND` | 404 | Mã không tồn tại, đã có chủ hoặc hết hạn | |
+| `VOUCHER_ALREADY_APPLIED` | 409 | Voucher đã áp vào đơn | |
+| `VOUCHER_EXPIRED` | 400 hoặc 409 | Voucher đã hết hạn | |
+| `VOUCHER_NOT_STARTED` | 400 | Chưa đến ngày dùng | `startDate` |
+| `VOUCHER_IN_USE` | 409 | Voucher đang dùng cho đơn khác | |
+| `VOUCHER_INACTIVE` | 409 | Voucher đã bị tắt | |
+| `VOUCHER_NOT_OWNED` | 409 | Voucher của tài khoản khác | |
+| `VOUCHER_SEAT_REQUIRED` | 400 | Voucher đổi vé cần chọn ghế | |
+| `VOUCHER_MIN_ORDER` | 400 | Chưa đạt giá trị đơn tối thiểu | `minOrderAmount` |
+| `VOUCHER_NOT_APPLICABLE` | 400 | Voucher không áp được | `reason`: `NO_MATCHING_COMBO`, `COMBO_ALREADY_COVERED`, `SEAT_NOT_IN_BOOKING`, `SEAT_ALREADY_COVERED`, `SEAT_TYPE_MISMATCH`, `NOTHING_TO_DISCOUNT`, `ONE_PER_KIND` (kèm `kind`) |
+| `VOUCHER_MIN_PAYMENT` | 400 | Sau khi giảm, số tiền còn lại nằm giữa 0 và mức tối thiểu ngân hàng nhận | `minPayment` |
+| `CONCURRENT_UPDATE` | 409 | Đơn vừa bị request khác sửa, cần thử lại | |
+| `INVALID_REQUEST` | 400 | Lỗi dữ liệu khác chưa có mã riêng | |
+| `NOT_FOUND` | 404 | Không tìm thấy dữ liệu khác | |
+| `CONFLICT` | 409 | Trạng thái không cho phép, chưa có mã riêng | |
+
+Mã chỉ được thêm mới, không đổi tên. Client gặp mã chưa biết thì dùng câu chung theo status HTTP.
+
 ## 2. Chi tiết endpoint
 
 ### 2.1 Sơ đồ ghế
