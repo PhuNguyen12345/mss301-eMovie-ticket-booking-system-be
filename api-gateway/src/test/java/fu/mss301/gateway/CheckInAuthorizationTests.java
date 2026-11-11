@@ -90,6 +90,16 @@ class CheckInAuthorizationTests {
     }
 
     @Test
+    void onlyAdminsLookUpCustomers() {
+        client.get().uri("/api/users?ids=73,74").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/api/users?ids=73,74").headers(h -> h.setBearerAuth("CUSTOMER"))
+            .exchange().expectStatus().isForbidden();
+        client.get().uri("/api/users?ids=73,74").headers(h -> h.setBearerAuth("ADMIN"))
+            .exchange().expectStatus().isOk();
+        client.get().uri("/api/users/me").headers(h -> h.setBearerAuth("CUSTOMER")).exchange().expectStatus().isOk();
+    }
+
+    @Test
     void theInternalPathIsNotReachableThroughTheGateway() {
         client.post().uri("/internal/showtimes/15/cancellation").headers(h -> h.setBearerAuth("ADMIN"))
             .exchange().expectStatus().isForbidden();
@@ -121,6 +131,11 @@ class CheckInAuthorizationTests {
     static class StubController {
         @GetMapping("/api/bookings/{id}/qr")
         Mono<String> qr() {
+            return Mono.just("ok");
+        }
+
+        @GetMapping({"/api/users", "/api/users/me"})
+        Mono<String> users() {
             return Mono.just("ok");
         }
 

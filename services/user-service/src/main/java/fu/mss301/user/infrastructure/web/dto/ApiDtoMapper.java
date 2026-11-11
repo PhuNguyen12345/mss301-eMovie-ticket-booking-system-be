@@ -64,6 +64,10 @@ public final class ApiDtoMapper {
         return new PasswordChangeResponse(value.changedAt());
     }
 
+    public static UserSummaryResponse toApi(fu.mss301.user.application.usecase.dto.UserSummary value) {
+        return new UserSummaryResponse(value.userId(), value.fullName(), value.email(), value.phone(), value.status());
+    }
+
     public static UserProfileResponse toApi(fu.mss301.user.application.usecase.dto.UserProfileResponse value) {
         return new UserProfileResponse(value.userId(), value.fullName(), value.email(), value.phone(),
                 value.dateOfBirth(), value.gender(), value.cityProvince(), value.district(), value.address(),

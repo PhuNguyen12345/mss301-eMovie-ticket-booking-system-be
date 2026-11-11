@@ -1,6 +1,8 @@
 package fu.mss301.user.infrastructure.persistence.repository;
 
 import fu.mss301.user.infrastructure.persistence.entity.User;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -25,6 +27,17 @@ public interface UserRepository extends JpaRepository<User, Integer> {
             from User u where u.id = :id
             """)
     Optional<ProfileRow> findProfileById(@Param("id") Integer id);
+
+    @Query("""
+            select u.id as userId, u.fullName as fullName, u.email as email, u.phone as phone,
+                   u.dateOfBirth as dateOfBirth, u.gender as gender,
+                   u.cityProvince as cityProvince, u.district as district,
+                   u.address as address, u.preferredCinemaId as preferredCinemaId,
+                   u.avatarUrl as avatarUrl, u.status as status,
+                   u.emailVerifiedAt as emailVerifiedAt
+            from User u where u.id in :ids
+            """)
+    List<ProfileRow> findProfilesByIds(@Param("ids") Collection<Integer> ids);
 
     interface ProfileRow {
         Integer getUserId();
