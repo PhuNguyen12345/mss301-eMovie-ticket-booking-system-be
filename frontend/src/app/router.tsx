@@ -153,6 +153,13 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "orders/:bookingId",
+            lazy: async () => ({
+              Component: (await import("../features/admin/AdminOrderPage"))
+                .AdminOrderPage,
+            }),
+          },
+          {
             path: "promotions",
             lazy: async () => ({
               Component: (await import("../features/combos/ComboAdminPage"))

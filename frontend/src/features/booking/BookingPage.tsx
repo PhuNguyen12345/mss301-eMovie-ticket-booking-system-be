@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { AccessGate } from "../../components/layout/AccessGate";
 import { Button } from "../../components/ui/Button";
 import { Dialog } from "../../components/ui/Dialog";
@@ -41,6 +41,7 @@ export function BookingDetails({
 }) {
   const query = useBooking(id);
   const actions = useBookingActions(id);
+  const { current, isAdmin } = useSession();
   const synced = useRef(false);
   useEffect(() => {
     if (fromPayment && query.data && !synced.current) {
@@ -54,6 +55,14 @@ export function BookingDetails({
         <EmptyState title="Mã đặt vé không hợp lệ" />
       </main>
     );
+  // Staff looking at someone else's order get the admin view, with the customer and check-in.
+  if (
+    !fromPayment &&
+    isAdmin &&
+    query.data &&
+    query.data.userId !== current?.user.userId
+  )
+    return <Navigate to={`/admin/orders/${id}`} replace />;
   return (
     <main className="page cinema-page">
       <Link className="text-link" to="/bookings">

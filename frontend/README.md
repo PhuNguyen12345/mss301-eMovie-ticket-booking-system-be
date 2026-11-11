@@ -75,6 +75,7 @@ private API data. Real booking uses API mode and the deployed cinema service.
 | Registration / reset      | `/register`, `/forgot-password`   | Register, resend OTP, verify registration, request password reset and confirm reset                                          |
 | Cinema administration     | `/admin/cinema`                   | Cinema/screen/seat-type list/create/update; seat creation; cinema/screen/seat status changes                                 |
 | Admin booking search      | `/admin/orders`                   | `GET /bookings` with code, status, user, showtime, date range and pagination                                                 |
+| Admin order detail        | `/admin/orders/:bookingId`        | `GET /bookings/{id}`, `GET /users?ids=` for the customer, `POST /bookings/check-in` from the order                           |
 | Combo administration      | `/admin/promotions`               | `GET /combos/all`, `POST /combos`, `PUT /combos/{id}`, activate/deactivate                                                   |
 | Booking combos            | `/bookings/:bookingId`            | `GET /combos`, `PUT /bookings/{id}/combos`; totals come from the updated booking                                             |
 
@@ -224,6 +225,12 @@ A voucher-covered booking is confirmed through the payment API. `NOT_REQUIRED`
 means no PayOS checkout is needed; only the refreshed booking confirms the ticket.
 The wallet and booking caches refresh after confirmation. The server computes all
 reductions and totals. Failed mutations preserve input and are never replayed.
+
+Staff open an order from Admin booking search at `/admin/orders/:bookingId`, inside the admin
+layout. It shows the customer's name, email and phone (one `GET /users?ids=` per page of orders),
+the ticket, payment and how many guests entered, and admits guests for that order after
+confirmation. It never shows the customer's QR code. An admin opening `/bookings/:id` of someone
+else's order is redirected there, and the order list and payment history link to it.
 
 Check-in accepts manual entry or a hardware scanner typing into the code field;
 it does not request camera access. Staff explicitly confirm the number entering,
