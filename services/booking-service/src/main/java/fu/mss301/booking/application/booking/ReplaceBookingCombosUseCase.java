@@ -1,5 +1,6 @@
 package fu.mss301.booking.application.booking;
 
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.application.exception.BookingNotFoundException;
 import fu.mss301.booking.application.exception.ComboNotFoundException;
 import fu.mss301.booking.application.exception.ComboUnavailableException;
@@ -47,7 +48,8 @@ public class ReplaceBookingCombosUseCase {
                 .orElseThrow(BookingNotFoundException::new);
             // An open PayOS link carries the old amount, and a different paid amount would be rejected.
             if (!payments.findPendingByBookingIdForUpdate(bookingId).isEmpty()) {
-                throw new InvalidStateTransitionException("Combos cannot be changed after a payment link was created");
+                throw new InvalidStateTransitionException(ErrorCode.PAYMENT_LINK_OPEN,
+                    "Combos cannot be changed after a payment link was created");
             }
             booking.replaceCombos(select(lines), LocalDateTime.now(clock));
             var saved = bookings.save(booking);

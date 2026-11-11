@@ -1,5 +1,6 @@
 package fu.mss301.booking.domain.booking;
 
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.voucher.DiscountType;
 import fu.mss301.booking.domain.voucher.VoucherKind;
@@ -69,7 +70,7 @@ final class VoucherPricing {
     }
 
     private void price(BookingVoucher voucher) {
-        String problem;
+        Problem problem;
         BigDecimal amount = BigDecimal.ZERO;
         switch (voucher.kind()) {
             case TICKET_EXCHANGE -> {
@@ -87,8 +88,10 @@ final class VoucherPricing {
             case COMBO_EXCHANGE -> {
                 BookingCombo combo = combos.get(voucher.comboId());
                 int used = exchangedServings.getOrDefault(voucher.comboId(), 0);
-                problem = combo == null ? "This booking has no combo this voucher is for"
-                    : used >= combo.quantity() ? "Every serving of this combo already has a voucher" : null;
+                problem = combo == null ? Problem.notApplicable("NO_MATCHING_COMBO", "This booking has no combo this voucher is for")
+                    : used >= combo.quantity()
+                        ? Problem.notApplicable("COMBO_ALREADY_COVERED", "Every serving of this combo already has a voucher")
+                        : null;
                 if (problem == null) amount = combo.price();
             }
             case COMBO_DISCOUNT -> {
@@ -103,9 +106,11 @@ final class VoucherPricing {
             }
             default -> throw new IllegalStateException("Unknown voucher kind " + voucher.kind());
         }
-        if (problem == null && amount.signum() <= 0) problem = "Nothing is left for this voucher to discount";
+        if (problem == null && amount.signum() <= 0) {
+            problem = Problem.notApplicable("NOTHING_TO_DISCOUNT", "Nothing is left for this voucher to discount");
+        }
         if (problem != null) {
-            if (strict) throw new DomainException(problem);
+            if (strict) throw new DomainException(problem.code(), problem.message(), problem.details());
             dropped.add(voucher);
             return;
         }
@@ -117,26 +122,42 @@ final class VoucherPricing {
         }
     }
 
-    private String ticketExchangeProblem(BookingVoucher voucher, BookingSeat seat) {
-        if (seat == null) return "Seat " + voucher.seatId() + " is not part of this booking";
-        if (exchangedSeats.contains(seat.seatId())) return "Seat " + seat.seatId() + " already has a voucher";
-        if (!matchesSeatType(voucher, seat)) return "This voucher is for a different seat type";
-        return null;
-    }
-
-    private String discountProblem(BookingVoucher voucher, BigDecimal base) {
-        String one = onlyOne(voucher);
-        if (one != null) return one;
-        if (voucher.minOrderAmount() != null && base.compareTo(voucher.minOrderAmount()) < 0) {
-            return "The booking does not reach the minimum amount of " + voucher.minOrderAmount().toPlainString()
-                + " for this voucher";
+    private Problem ticketExchangeProblem(BookingVoucher voucher, BookingSeat seat) {
+        if (seat == null) {
+            return Problem.notApplicable("SEAT_NOT_IN_BOOKING", "Seat " + voucher.seatId() + " is not part of this booking");
+        }
+        if (exchangedSeats.contains(seat.seatId())) {
+            return Problem.notApplicable("SEAT_ALREADY_COVERED", "Seat " + seat.seatId() + " already has a voucher");
+        }
+        if (!matchesSeatType(voucher, seat)) {
+            return Problem.notApplicable("SEAT_TYPE_MISMATCH", "This voucher is for a different seat type");
         }
         return null;
     }
 
-    private String onlyOne(BookingVoucher voucher) {
+    private Problem discountProblem(BookingVoucher voucher, BigDecimal base) {
+        Problem one = onlyOne(voucher);
+        if (one != null) return one;
+        if (voucher.minOrderAmount() != null && base.compareTo(voucher.minOrderAmount()) < 0) {
+            return new Problem(ErrorCode.VOUCHER_MIN_ORDER, "The booking does not reach the minimum amount of "
+                + voucher.minOrderAmount().toPlainString() + " for this voucher",
+                Map.of("minOrderAmount", voucher.minOrderAmount()));
+        }
+        return null;
+    }
+
+    private Problem onlyOne(BookingVoucher voucher) {
         boolean taken = amounts.keySet().stream().anyMatch(other -> other.kind() == voucher.kind());
-        return taken ? "A booking can use only one " + voucher.kind() + " voucher" : null;
+        return taken ? new Problem(ErrorCode.VOUCHER_NOT_APPLICABLE,
+            "A booking can use only one " + voucher.kind() + " voucher",
+            Map.of("reason", "ONE_PER_KIND", "kind", voucher.kind().name())) : null;
+    }
+
+    /** Why a voucher does not apply; the message is for logs, the code and details for clients. */
+    private record Problem(ErrorCode code, String message, Map<String, Object> details) {
+        static Problem notApplicable(String reason, String message) {
+            return new Problem(ErrorCode.VOUCHER_NOT_APPLICABLE, message, Map.of("reason", reason));
+        }
     }
 
     private static boolean matchesSeatType(BookingVoucher voucher, BookingSeat seat) {

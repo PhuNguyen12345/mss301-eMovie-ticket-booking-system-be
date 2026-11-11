@@ -1,5 +1,7 @@
 package fu.mss301.booking.domain.voucher;
 
+import java.util.Map;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.domain.shared.DomainException;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 
@@ -123,15 +125,22 @@ public final class Voucher {
      */
     public void reserveFor(Integer userId, Integer bookingId, LocalDateTime now) {
         if (bookingId == null) throw new DomainException("Booking id is required");
-        if (!isOwnedBy(userId)) throw new InvalidStateTransitionException("This voucher belongs to another account");
+        if (!isOwnedBy(userId)) {
+            throw new InvalidStateTransitionException(ErrorCode.VOUCHER_NOT_OWNED, "This voucher belongs to another account");
+        }
         if (claim.status() == ClaimStatus.RESERVED && bookingId.equals(claim.bookingId())) return;
-        if (claim.status() != ClaimStatus.AVAILABLE) throw new InvalidStateTransitionException("This voucher is already in use");
-        if (status != VoucherStatus.ACTIVE) throw new InvalidStateTransitionException("This voucher is no longer active");
+        if (claim.status() != ClaimStatus.AVAILABLE) {
+            throw new InvalidStateTransitionException(ErrorCode.VOUCHER_IN_USE, "This voucher is already in use");
+        }
+        if (status != VoucherStatus.ACTIVE) {
+            throw new InvalidStateTransitionException(ErrorCode.VOUCHER_INACTIVE, "This voucher is no longer active");
+        }
         LocalDate today = now.toLocalDate();
         if (today.isBefore(terms.startDate())) {
-            throw new DomainException("This voucher can be used from " + terms.startDate());
+            throw new DomainException(ErrorCode.VOUCHER_NOT_STARTED, "This voucher can be used from " + terms.startDate(),
+                Map.of("startDate", terms.startDate()));
         }
-        if (isExpiredOn(today)) throw new DomainException("This voucher has expired");
+        if (isExpiredOn(today)) throw new DomainException(ErrorCode.VOUCHER_EXPIRED, "This voucher has expired");
         claim.reserve(bookingId, now);
         updatedAt = now;
     }

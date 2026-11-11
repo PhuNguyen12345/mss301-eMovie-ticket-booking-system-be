@@ -1,6 +1,7 @@
 package fu.mss301.booking.domain.booking;
 
 import fu.mss301.booking.domain.shared.DomainException;
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.domain.shared.InvalidStateTransitionException;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,9 @@ class BookingCheckInTest {
     @Test
     void onlyAPaidBookingCanBeCheckedIn() {
         Booking pending = persisted(hold(3));
-        assertThrows(InvalidStateTransitionException.class, () -> pending.checkIn(null, 1, START, WINDOW, START));
+        var unpaid = assertThrows(InvalidStateTransitionException.class, () -> pending.checkIn(null, 1, START, WINDOW, START));
+        assertEquals(ErrorCode.CHECK_IN_NOT_PAID, unpaid.code());
+        assertEquals("PENDING_PAYMENT", unpaid.details().get("status"));
         Booking cancelled = persisted(hold(3));
         cancelled.cancelBy(7, NOW);
         assertThrows(InvalidStateTransitionException.class, () -> cancelled.checkIn(null, 1, START, WINDOW, START));
@@ -36,6 +39,10 @@ class BookingCheckInTest {
             () -> paid(1).checkIn(null, 1, START, WINDOW, START.plusMinutes(20).plusSeconds(1)));
         assertTrue(late.getMessage().contains("2027-01-21T17:45") && late.getMessage().contains("2027-01-21T18:20"),
             late.getMessage());
+        assertEquals(ErrorCode.CHECK_IN_NOT_OPEN, late.code());
+        assertEquals(START.minusMinutes(15), late.details().get("opensAt"));
+        assertEquals(START.plusMinutes(20), late.details().get("closesAt"));
+        assertEquals(START, late.details().get("startTime"));
     }
 
     @Test
@@ -58,7 +65,9 @@ class BookingCheckInTest {
     void moreThanTheSeatsLeftOrNobodyIsRefused() {
         Booking booking = paid(2);
         booking.checkIn(1, 1, START, WINDOW, START);
-        assertThrows(DomainException.class, () -> booking.checkIn(2, 1, START, WINDOW, START));
+        var tooMany = assertThrows(DomainException.class, () -> booking.checkIn(2, 1, START, WINDOW, START));
+        assertEquals(ErrorCode.CHECK_IN_TOO_MANY, tooMany.code());
+        assertEquals(1, tooMany.details().get("remaining"));
         assertThrows(DomainException.class, () -> booking.checkIn(0, 1, START, WINDOW, START));
         assertThrows(DomainException.class, () -> booking.checkIn(-1, 1, START, WINDOW, START));
         assertEquals(1, booking.admittedCount());

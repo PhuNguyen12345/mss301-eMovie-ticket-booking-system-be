@@ -1,5 +1,6 @@
 package fu.mss301.booking.application.booking;
 
+import fu.mss301.booking.domain.shared.ErrorCode;
 import fu.mss301.booking.application.port.Transactions;
 import fu.mss301.booking.application.exception.SeatUnavailableException;
 import fu.mss301.booking.application.port.CinemaCatalog;
@@ -56,7 +57,7 @@ public class HoldSeatsUseCase {
         // Remote reads happen before the transaction so no DB lock is held while waiting on the network.
         ShowtimeSnapshot showtime = showtimes.getShowtime(showtimeId);
         if (!showtime.isOpenForBookingAt(now)) {
-            throw new InvalidStateTransitionException("Showtime is not open for booking");
+            throw new InvalidStateTransitionException(ErrorCode.SHOWTIME_NOT_OPEN, "Showtime is not open for booking");
         }
         Map<Integer, PhysicalSeat> layout = seatLayout.getSeats(showtime.screenId()).stream()
             .collect(Collectors.toMap(PhysicalSeat::id, Function.identity(), (first, second) -> first));
@@ -87,7 +88,9 @@ public class HoldSeatsUseCase {
     private static void requireUsable(Integer seatId, Map<Integer, PhysicalSeat> layout) {
         PhysicalSeat seat = seatId == null ? null : layout.get(seatId);
         if (seat == null) throw new DomainException("Seat " + seatId + " does not belong to this showtime's screen");
-        if (!seat.usable()) throw new SeatUnavailableException("Seat " + seatId + " is not in service");
+        if (!seat.usable()) {
+            throw new SeatUnavailableException(ErrorCode.SEAT_OUT_OF_SERVICE, "Seat " + seatId + " is not in service");
+        }
     }
 
     private static SeatSelection select(PhysicalSeat seat, Map<Integer, SeatTypePrice> prices,
